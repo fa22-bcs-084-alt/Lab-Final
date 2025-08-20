@@ -15,13 +15,15 @@ import { firstValueFrom } from 'rxjs'
 export class AuthController {
   constructor(@Inject('AUTH_SERVICE') private authClient: ClientProxy) {}
 
+
+
+  
   @Post('register')
   async register(@Body() body: { email: string; password: string }) {
     try {
       return await firstValueFrom(this.authClient.send({ cmd: 'register' }, body))
     } catch (e: any) {
-      const msg = e?.message || 'register failed'
-      throw new BadRequestException(msg)
+      throw new BadRequestException(e?.message || 'register failed')
     }
   }
 
@@ -30,18 +32,18 @@ export class AuthController {
     try {
       return await firstValueFrom(this.authClient.send({ cmd: 'verify-otp' }, body))
     } catch (e: any) {
-      const msg = e?.message || 'otp verification failed'
-      throw new BadRequestException(msg)
+      console.log(e)
+      throw new BadRequestException(e?.message || 'otp verification failed')
     }
   }
+
 
   @Post('login')
   async login(@Body() body: { email: string; password: string }) {
     try {
       return await firstValueFrom(this.authClient.send({ cmd: 'login' }, body))
     } catch (e: any) {
-      const msg = e?.message || 'invalid credentials'
-      throw new UnauthorizedException(msg)
+      throw new UnauthorizedException(e?.message || 'invalid credentials')
     }
   }
 
@@ -50,8 +52,18 @@ export class AuthController {
     try {
       return await firstValueFrom(this.authClient.send({ cmd: 'request-password-reset' }, body))
     } catch (e: any) {
-      const msg = e?.message || 'request password reset failed'
-      throw new BadRequestException(msg)
+      throw new BadRequestException(e?.message || 'request password reset failed')
+    }
+  }
+
+
+  @Post('verify-reset-otp')
+  async verifyResetOtp(@Body() body: { email: string; otp: string }) {
+    try {
+      return await firstValueFrom(this.authClient.send({ cmd: 'verify-reset-otp' }, body))
+    } catch (e: any) {
+      console.log(e)
+      throw new BadRequestException(e?.message || 'verify reset otp failed')
     }
   }
 
@@ -60,8 +72,7 @@ export class AuthController {
     try {
       return await firstValueFrom(this.authClient.send({ cmd: 'reset-password' }, body))
     } catch (e: any) {
-      const msg = e?.message || 'reset password failed'
-      throw new BadRequestException(msg)
+      throw new BadRequestException(e?.message || 'reset password failed')
     }
   }
 
@@ -72,8 +83,7 @@ export class AuthController {
     try {
       return await firstValueFrom(this.authClient.send({ cmd: 'me' }, token))
     } catch (e: any) {
-      const msg = e?.message || 'invalid token'
-      throw new UnauthorizedException(msg)
+      throw new UnauthorizedException(e?.message || 'invalid token')
     }
   }
 }

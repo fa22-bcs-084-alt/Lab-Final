@@ -12,13 +12,25 @@ export class AuthController {
   @Get('google')
   @UseGuards(AuthGuard('google'))
   async googleAuth() {}
+  
+  
 
-  @Get('google/callback')
-  @UseGuards(AuthGuard('google'))
-  async googleCallback(@Req() req, @Res() res: Response) {
-    const token = await this.auth.login(req.user)
-    res.redirect(`${process.env.APP_URL}/?token=${token.accessToken}`)
+@Get('google/callback')
+@UseGuards(AuthGuard('google'))
+async googleCallback(@Req() req, @Res() res: Response) {
+  const user = req.user
+  console.log("o auth user=", user)
+
+  const email = user.emails?.[0]?.value // 👈 extract email safely
+  if (!email) {
+    throw new Error('Google account has no email')
   }
+
+  await this.auth.registerOAuth(email)
+
+  const token = await this.auth.login(req.user)
+  res.redirect(`${process.env.APP_URL}/?token=${token.accessToken}`)
+}
 
   // === Microservice patterns ===
   @MessagePattern({ cmd: 'register' })
@@ -40,6 +52,11 @@ export class AuthController {
   @MessagePattern({ cmd: 'request-password-reset' })
   async requestPasswordResetMs(data: { email: string }) {
     return this.auth.requestPasswordReset(data.email)
+  }
+
+  @MessagePattern({ cmd: 'verify-reset-otp' })
+  async VerifyResetOtp(data: { email: string, otp: string}) {
+    return this.auth.verifyResetOtp(data.email,data.otp)
   }
 
   @MessagePattern({ cmd: 'reset-password' })

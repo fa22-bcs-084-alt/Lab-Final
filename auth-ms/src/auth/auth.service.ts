@@ -18,6 +18,19 @@ export class AuthService {
   await this.mailer.sendMail(email, subject, `${message}\n\nYour OTP: ${otp}`)
 }
 
+async verifyResetOtp(email: string, otp: string) {
+  const { data, error } = await this.supabase.getClient()
+    .from('users')
+    .select('*')
+    .eq('email', email)
+    .single()
+
+  if (error || !data) throw new UnauthorizedException('Invalid email')
+  if (data.otp !== otp) throw new BadRequestException('Invalid OTP')
+
+  return { success: true, message: 'OTP verified successfully' }
+}
+
   async register(email: string, password: string) {
     const hash = await bcrypt.hash(password, 10)
     const otp = crypto.randomInt(100000, 999999).toString()
@@ -35,9 +48,48 @@ export class AuthService {
     }
 
     await this.sendOtpEmail(email, otp, 'Verify your account', 'Welcome! Please verify your email using the OTP below.')
-    return { message: 'Registered successfully, OTP sent to email' }
+    return { message: 'Registered successfully, OTP sent to email',success:true }
   }
 
+
+async registerOAuth(email: string) {
+  // check if user already exists
+  const { data: existingUser, error: fetchError } = await this.supabase.getClient()
+    .from('users')
+    .select('id')
+    .eq('email', email)
+    .single()
+
+  if (fetchError && fetchError.code !== 'PGRST116') { 
+    // PGRST116 = no rows found (safe to ignore)
+    throw new Error(fetchError.message)
+  }
+
+  if (existingUser) {
+    return { message: 'User already exists', success: false }
+  }
+
+  // insert new user
+  const { error: insertError } = await this.supabase.getClient()
+    .from('users')
+    .insert([{ 
+      email, 
+      password_hash: '', 
+      role: 'patient', 
+      otp: 0, 
+      is_verified: true 
+    }])
+
+  if (insertError) {
+    throw new Error(insertError.message)
+  }
+
+  return { message: 'Registered successfully', success: true }
+}
+
+
+
+  
   async verifyOtp(email: string, otp: string) {
     const { data, error } = await this.supabase.getClient()
       .from('users')
@@ -53,7 +105,7 @@ export class AuthService {
       .update({ is_verified: true, otp: null })
       .eq('email', email)
 
-    return { message: 'Email verified successfully' }
+    return {success: true, message: 'Email verified successfully' }
   }
 
   async validateUser(email: string, pass: string) {
@@ -76,10 +128,22 @@ export class AuthService {
     const payload = { sub: user.id, email: user.email, role: user.role }
     return {
       accessToken: this.jwt.sign(payload),
+      role: user.role,
+    id: user.id
     }
   }
 
   async requestPasswordReset(email: string) {
+
+     const { data: existingUser, error: fetchError } = await this.supabase.getClient()
+    .from('users')
+    .select('id')
+    .eq('email', email)
+    .single()
+
+    if(!existingUser){
+       return { message: 'No Such user found',success:false }
+    }
     const otp = crypto.randomInt(100000, 999999).toString()
 
     const { error } = await this.supabase.getClient()
@@ -90,7 +154,7 @@ export class AuthService {
     if (error) throw new Error(error.message)
 
     await this.sendOtpEmail(email, otp, 'Password Reset Request', 'Use the OTP below to reset your password.')
-    return { message: 'Password reset OTP sent to email' }
+    return { message: 'Password reset OTP sent to email',success:true }
   }
 
   async resetPassword(email: string, otp: string, newPassword: string) {
@@ -110,7 +174,7 @@ export class AuthService {
       .update({ password_hash: hash, otp: null })
       .eq('email', email)
 
-    return { message: 'Password reset successfully' }
+    return { message: 'Password reset successfully' ,success:true}
   }
 
   async findOrCreateGoogleUser(profile: any) {
