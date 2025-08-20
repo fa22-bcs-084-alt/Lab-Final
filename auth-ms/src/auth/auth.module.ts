@@ -6,6 +6,8 @@ import { AuthController } from './auth.controller'
 import { SupabaseModule } from '../supabase/supabase.module'
 import { ConfigModule, ConfigService } from '@nestjs/config'
 import { GoogleStrategy } from './google.strategy'
+import { MailerService } from 'src/mailer-service/mailer-service.service'
+
 
 @Module({
   imports: [
@@ -20,7 +22,7 @@ import { GoogleStrategy } from './google.strategy'
       }),
     }),
   ],
-  providers: [AuthService, GoogleStrategy],   // <-- add here
+  providers: [AuthService, GoogleStrategy,MailerService],   // <-- add here
   controllers: [AuthController],
 })
 export class AuthModule {}

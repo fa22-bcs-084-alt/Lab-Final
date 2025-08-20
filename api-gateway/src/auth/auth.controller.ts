@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Inject, Post, Req, BadRequestException, UnauthorizedException } from '@nestjs/common'
+import { 
+  Body, 
+  Controller, 
+  Get, 
+  Inject, 
+  Post, 
+  Req, 
+  BadRequestException, 
+  UnauthorizedException 
+} from '@nestjs/common'
 import { ClientProxy } from '@nestjs/microservices'
 import { firstValueFrom } from 'rxjs'
 
@@ -16,6 +25,16 @@ export class AuthController {
     }
   }
 
+  @Post('verify-otp')
+  async verifyOtp(@Body() body: { email: string; otp: string }) {
+    try {
+      return await firstValueFrom(this.authClient.send({ cmd: 'verify-otp' }, body))
+    } catch (e: any) {
+      const msg = e?.message || 'otp verification failed'
+      throw new BadRequestException(msg)
+    }
+  }
+
   @Post('login')
   async login(@Body() body: { email: string; password: string }) {
     try {
@@ -23,6 +42,26 @@ export class AuthController {
     } catch (e: any) {
       const msg = e?.message || 'invalid credentials'
       throw new UnauthorizedException(msg)
+    }
+  }
+
+  @Post('request-password-reset')
+  async requestPasswordReset(@Body() body: { email: string }) {
+    try {
+      return await firstValueFrom(this.authClient.send({ cmd: 'request-password-reset' }, body))
+    } catch (e: any) {
+      const msg = e?.message || 'request password reset failed'
+      throw new BadRequestException(msg)
+    }
+  }
+
+  @Post('reset-password')
+  async resetPassword(@Body() body: { email: string; otp: string; newPassword: string }) {
+    try {
+      return await firstValueFrom(this.authClient.send({ cmd: 'reset-password' }, body))
+    } catch (e: any) {
+      const msg = e?.message || 'reset password failed'
+      throw new BadRequestException(msg)
     }
   }
 

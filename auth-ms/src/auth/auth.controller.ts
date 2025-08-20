@@ -1,16 +1,13 @@
-import { Body, Controller, Post, Get, Req, UseGuards } from '@nestjs/common'
+import { Body, Controller, Post, Get, Req, Res, UseGuards } from '@nestjs/common'
 import { AuthService } from './auth.service'
 import { JwtService } from '@nestjs/jwt'
-import type { Request, Response } from 'express'
-import { Res } from '@nestjs/common'
+import type {  Response } from 'express'
 import { AuthGuard } from '@nestjs/passport'
 import { MessagePattern } from '@nestjs/microservices'
 
 @Controller()
 export class AuthController {
   constructor(private auth: AuthService, private jwt: JwtService) {}
-
-  
 
   @Get('google')
   @UseGuards(AuthGuard('google'))
@@ -26,8 +23,12 @@ export class AuthController {
   // === Microservice patterns ===
   @MessagePattern({ cmd: 'register' })
   async registerMs(data: { email: string; password: string }) {
-    const user = await this.auth.register(data.email, data.password)
-    return this.auth.login(user)
+    return this.auth.register(data.email, data.password)
+  }
+
+  @MessagePattern({ cmd: 'verify-otp' })
+  async verifyOtpMs(data: { email: string; otp: string }) {
+    return this.auth.verifyOtp(data.email, data.otp)
   }
 
   @MessagePattern({ cmd: 'login' })
@@ -36,9 +37,18 @@ export class AuthController {
     return this.auth.login(user)
   }
 
+  @MessagePattern({ cmd: 'request-password-reset' })
+  async requestPasswordResetMs(data: { email: string }) {
+    return this.auth.requestPasswordReset(data.email)
+  }
+
+  @MessagePattern({ cmd: 'reset-password' })
+  async resetPasswordMs(data: { email: string; otp: string; newPassword: string }) {
+    return this.auth.resetPassword(data.email, data.otp, data.newPassword)
+  }
+
   @MessagePattern({ cmd: 'me' })
   async meMs(token: string) {
-    const decoded = this.jwt.verify(token)
-    return decoded
+    return this.jwt.verify(token)
   }
 }
