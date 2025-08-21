@@ -3,9 +3,13 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { BookingsModule } from './bookings/bookings.module';
 import { MedicalRecordsModule } from './medical-records/medical-records.module';
-
+import { ConfigModule } from '@nestjs/config';
 @Module({
-  imports: [BookingsModule, MedicalRecordsModule],
+  imports: [BookingsModule, MedicalRecordsModule,
+      ConfigModule.forRoot({
+      isGlobal: true, // makes env available everywhere
+    }),
+  ],
   controllers: [AppController],
   providers: [AppService],
 })
