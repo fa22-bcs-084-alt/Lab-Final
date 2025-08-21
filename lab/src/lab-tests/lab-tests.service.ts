@@ -1,21 +1,24 @@
-import { Injectable, Inject } from '@nestjs/common'
+import { Injectable,  NotFoundException } from '@nestjs/common'
 import { SupabaseClient } from '@supabase/supabase-js'
-
+import { ConfigService } from '@nestjs/config'
+import { createClient } from '@supabase/supabase-js'
 @Injectable()
 export class LabTestsService {
-  constructor(@Inject('SUPABASE') private readonly supabase: SupabaseClient) {}
+   private supabase: SupabaseClient
 
-  async create(dto) {
+    constructor(private configService: ConfigService) {
+      this.supabase = createClient(
+        this.configService.get<string>('SUPABASE_URL')!,
+        this.configService.get<string>('SUPABASE_SERVICE_ROLE_KEY')!,
+      )
+  
+    
+    }
+
+  async createTest(dto: any) {
     const { data, error } = await this.supabase
       .from('lab_tests')
-      .insert([{
-        name: dto.name,
-        description: dto.description,
-        category: dto.category,
-        price: dto.price,
-        duration: dto.duration,
-        preparation_instructions: dto.preparationInstructions
-      }])
+      .insert([dto])
       .select()
       .single()
 
@@ -23,19 +26,51 @@ export class LabTestsService {
     return data
   }
 
-  async findAll() {
-    const { data, error } = await this.supabase.from('lab_tests').select('*')
+  async getAllTests() {
+    const { data, error } = await this.supabase
+      .from('lab_tests')
+      .select('*')
+      .order('name', { ascending: true })
+
     if (error) throw error
     return data
   }
 
-  async findOne(id: string) {
+  async getTestById(id: string) {
     const { data, error } = await this.supabase
       .from('lab_tests')
       .select('*')
       .eq('id', id)
       .single()
+
     if (error) throw error
+    if (!data) throw new NotFoundException('Lab test not found')
     return data
+  }
+
+  async updateTest(id: string, dto: any) {
+    const { data, error } = await this.supabase
+      .from('lab_tests')
+      .update(dto)
+      .eq('id', id)
+      .select()
+      .single()
+
+    if (error) throw error
+    if (!data) throw new NotFoundException('Lab test not found')
+    return data
+  }
+
+  async deleteTest(id: string) {
+    const { data, error } = await this.supabase
+      .from('lab_tests')
+      .delete()
+      .eq('id', id)
+      .select()
+      .single()
+
+    if (error) throw error
+    if (!data) throw new NotFoundException('Lab test not found')
+    return { success: true, deletedId: id }
   }
 }
