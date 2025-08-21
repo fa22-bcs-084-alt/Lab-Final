@@ -24,11 +24,15 @@ export class MedicalRecordsService {
   async uploadFile(patientId: string, file: Express.Multer.File, dto) {
     const upload = await new Promise<UploadApiResponse>((resolve, reject) => {
       const stream = cloudinary.uploader.upload_stream(
-        { folder: 'medical-records' },
+        {
+          folder: 'medical-records',
+          resource_type: 'auto', // handles images & pdfs
+          format: file.mimetype === 'application/pdf' ? 'pdf' : undefined,
+        },
         (err, result) => {
           if (err) return reject(err)
           resolve(result as UploadApiResponse)
-        }
+        },
       )
       Readable.from(file.buffer).pipe(stream)
     })
@@ -41,7 +45,7 @@ export class MedicalRecordsService {
         title: dto.title,
         record_type: dto.recordType,
         file_url: upload.secure_url,
-        doctor_name: dto.doctorName,
+        doctor_name: dto.doctor_name,
       }])
       .select()
       .single()
@@ -62,8 +66,14 @@ export class MedicalRecordsService {
     if (error) throw error
 
     if (data?.file_url) {
-      const publicId = data.file_url.split('/').pop().split('.')[0]
-      await cloudinary.uploader.destroy(`medical-records/${publicId}`)
+      const parts = data.file_url.split('/')
+      const filename = parts.pop()
+      const publicId = filename?.split('.')[0]
+      if (publicId) {
+        await cloudinary.uploader.destroy(`medical-records/${publicId}`, {
+          resource_type: 'auto',
+        })
+      }
     }
 
     return { success: true, deletedId: id }
@@ -80,7 +90,7 @@ export class MedicalRecordsService {
     if (error) throw error
     if (!data) throw new Error('Record not found')
 
-    return { fileUrl: data.file_url }
+    return { file_url: data.file_url }
   }
 
   async listPatientRecords(patientId: string) {

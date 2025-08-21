@@ -57,9 +57,9 @@ export class BookingsController {
   async uploadScan(
     @Param('id') bookingId: string,
     @UploadedFile() file: Express.Multer.File,
-    @Body('doctorName') doctorName?: string
+    @Body('doctor_name') doctor_name?: string
   ) {
-    return this.bookedLabTestsService.uploadScan(bookingId, file, doctorName)
+    return this.bookedLabTestsService.uploadScan(bookingId, file, doctor_name)
   }
 
   // Lab technician uploads test results (generate PDF)
@@ -68,7 +68,7 @@ export class BookingsController {
     @Param('id') bookingId: string,
     @Body()
     body: {
-      doctorName?: string
+      doctor_name?: string
       title: string
       resultData: string
     }
