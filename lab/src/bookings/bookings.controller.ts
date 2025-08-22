@@ -1,26 +1,14 @@
-import {
-  Body,
-  Controller,
-  Delete,
-  Get,
-  Param,
-  Post,
-  Patch,
-  UploadedFile,
-  UseInterceptors,
-  Query
-} from '@nestjs/common'
-import { FileInterceptor } from '@nestjs/platform-express'
+import { Controller } from '@nestjs/common'
+import { MessagePattern, Payload } from '@nestjs/microservices'
 import { BookingsService } from './bookings.service'
 
-@Controller('booked-lab-tests')
+@Controller()
 export class BookingsController {
   constructor(private readonly bookedLabTestsService: BookingsService) {}
 
-  // Patient books a test
-  @Post()
+  @MessagePattern({ cmd: 'book_test' })
   async bookTest(
-    @Body()
+    @Payload()
     body: {
       testId: string
       patientId: string
@@ -33,46 +21,43 @@ export class BookingsController {
     return this.bookedLabTestsService.bookTest(body)
   }
 
-  // Patient views their bookings
-  @Get('patient/:patientId')
-  async getPatientBookings(@Param('patientId') patientId: string) {
+  @MessagePattern({ cmd: 'get_patient_bookings' })
+  async getPatientBookings(@Payload() patientId: string) {
     return this.bookedLabTestsService.getBookingsByPatient(patientId)
   }
 
-  // Patient cancels a booking
-  @Patch(':id/cancel')
-  async cancelBooking(@Param('id') bookingId: string) {
+  @MessagePattern({ cmd: 'cancel_booking' })
+  async cancelBooking(@Payload() bookingId: string) {
     return this.bookedLabTestsService.cancelBooking(bookingId)
   }
 
-  // Lab technician views assigned bookings
-  @Get('technician/:techId')
-  async getTechnicianBookings(@Param('techId') techId: string) {
+  @MessagePattern({ cmd: 'get_technician_bookings' })
+  async getTechnicianBookings(@Payload() techId: string) {
     return this.bookedLabTestsService.getBookingsByTechnician(techId)
   }
 
-  // Lab technician uploads scan (direct file)
-  @Post(':id/upload-scan')
-  @UseInterceptors(FileInterceptor('file'))
+  @MessagePattern({ cmd: 'upload_scan' })
   async uploadScan(
-    @Param('id') bookingId: string,
-    @UploadedFile() file: Express.Multer.File,
-    @Body('doctor_name') doctor_name?: string
+    @Payload()
+    data: {
+      bookingId: string
+      file: Express.Multer.File
+      doctor_name?: string
+    }
   ) {
-    return this.bookedLabTestsService.uploadScan(bookingId, file, doctor_name)
+    return this.bookedLabTestsService.uploadScan(data.bookingId, data.file, data.doctor_name)
   }
 
-  // Lab technician uploads test results (generate PDF)
-  @Post(':id/upload-result')
+  @MessagePattern({ cmd: 'upload_result' })
   async uploadResult(
-    @Param('id') bookingId: string,
-    @Body()
+    @Payload()
     body: {
+      bookingId: string
       doctor_name?: string
       title: string
       resultData: string
     }
   ) {
-    return this.bookedLabTestsService.uploadResult(bookingId, body)
+    return this.bookedLabTestsService.uploadResult(body.bookingId, body)
   }
 }

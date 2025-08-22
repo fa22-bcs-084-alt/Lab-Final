@@ -24,6 +24,7 @@
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.0.1",
     "@nestjs/mapped-types": "*",
+    "@nestjs/microservices": "^11.1.6",
     "@nestjs/platform-express": "^11.1.6",
     "@supabase/supabase-js": "^2.55.0",
     "cloudinary": "^2.7.0",
