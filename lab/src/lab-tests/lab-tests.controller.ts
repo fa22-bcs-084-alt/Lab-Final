@@ -1,32 +1,33 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body } from '@nestjs/common'
+import { Controller } from '@nestjs/common'
+import { MessagePattern, Payload } from '@nestjs/microservices'
 import { LabTestsService } from './lab-tests.service'
 
-@Controller('lab-tests')
+@Controller()
 export class LabTestsController {
   constructor(private readonly labTestsService: LabTestsService) {}
 
-  @Post()
-  async create(@Body() dto: any) {
+  @MessagePattern({ cmd: 'createLabTest' })
+  async create(@Payload() dto: any) {
     return this.labTestsService.createTest(dto)
   }
 
-  @Get()
+  @MessagePattern({ cmd: 'getAllLabTests' })
   async findAll() {
     return this.labTestsService.getAllTests()
   }
 
-  @Get(':id')
-  async findOne(@Param('id') id: string) {
+  @MessagePattern({ cmd: 'getLabTestById' })
+  async findOne(@Payload() id: string) {
     return this.labTestsService.getTestById(id)
   }
 
-  @Patch(':id')
-  async update(@Param('id') id: string, @Body() dto: any) {
-    return this.labTestsService.updateTest(id, dto)
+  @MessagePattern({ cmd: 'updateLabTest' })
+  async update(@Payload() data: { id: string; dto: any }) {
+    return this.labTestsService.updateTest(data.id, data.dto)
   }
 
-  @Delete(':id')
-  async remove(@Param('id') id: string) {
+  @MessagePattern({ cmd: 'deleteLabTest' })
+  async remove(@Payload() id: string) {
     return this.labTestsService.deleteTest(id)
   }
 }
