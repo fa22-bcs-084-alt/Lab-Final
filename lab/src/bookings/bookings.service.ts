@@ -235,7 +235,6 @@ async uploadResult(
   // --- send to FastAPI /index ---
   const formData = new FormData()
   formData.append('patientId', patientId)
-  formData.append('recordId', (data as any)[0].id)
   formData.append('title', body.title)
   formData.append('recordType', 'report')
   formData.append('doctorName', body.doctor_name || '')
@@ -250,7 +249,7 @@ async uploadResult(
 }
 
 
-  async getBookingsByPatient(patientId: string) {
+async getBookingsByPatient(patientId: string) {
     const { data, error } = await this.supabase
       .from('booked_lab_tests')
       .select('*')
@@ -272,15 +271,50 @@ async uploadResult(
     return data;
   }
 
-  async getBookingsByTechnician(techId: string) {
-    const { data, error } = await this.supabase
-      .from('booked_lab_tests')
-      .select('*')
-      .eq('lab_technician_id', techId);
+async getBookingsByTechnician(techId: string) {
+  const { data, error } = await this.supabase
+    .from('booked_lab_tests')
+    .select(`
+      id,
+      test_id,
+      scheduled_date,
+      scheduled_time,
+      status,
+      booked_at,
+      location,
+      instructions,
+      patient:patient_id (
+        id,
+        email
+      ),
+      medical_records!booked_test_id (
+        record_type,
+        title,
+        date,
+        file_url
+      )
+    `)
+    .eq('lab_technician_id', techId);
 
-    if (error) throw new Error(error.message);
-    return data;
-  }
+  if (error) throw new Error(error.message);
+
+  return data.map((item: any) => ({
+    id: item.id,
+    testId: item.test_id,
+    testName: item.medical_records?.[0]?.title || "", 
+    scheduledDate: new Date(item.scheduled_date),
+    scheduledTime: item.scheduled_time,
+    status: item.status,
+    bookedAt: item.booked_at,
+    location: item.location || "",
+    instructions: item.instructions || undefined,
+    patientName: item.patient?.email || "Unknown",
+    type: item.medical_records?.[0]?.record_type || "lab-result",
+    uploadedAt: item.medical_records?.[0]?.date ? new Date(item.medical_records[0].date) : undefined,
+    reportFile: undefined
+  }));
+}
+
 
 
 }
