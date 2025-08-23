@@ -106,59 +106,74 @@ export class BookingsService {
     return booking;
   }
 
-  async uploadScan(bookingId: string, file: Express.Multer.File, doctor_name?: string) {
-    const uploaded = await cloudinary.uploader.upload(file.path, {
-      folder: 'medical_records/scans',
-      resource_type: 'auto',
-    });
 
-    const { data, error } = await this.supabase.from('medical_records').insert([
-      {
-        booked_test_id: bookingId,
-        patient_id: (
-          await this.supabase
-            .from('booked_lab_tests')
-            .select('patient_id')
-            .eq('id', bookingId)
-            .single()
-        ).data?.patient_id,
-        title: 'Lab Scan',
-        record_type: 'scan',
-        date: new Date().toISOString(),
-        file_url: uploaded.secure_url,
-        doctor_name,
-      },
-    ]);
+async uploadScan(
+  bookingId: string,
+  fileBuffer: Buffer | Uint8Array,
+  fileName: string,
+  doctor_name?: string
+) {
+  const uploaded = await new Promise<any>((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      { folder: 'medical_records/scans', resource_type: 'auto' },
+      (error, result) => (error ? reject(error) : resolve(result))
+    );
 
-    if (error) throw new Error(error.message);
-
-    await this.supabase
-      .from('booked_lab_tests')
-      .update({ status: 'completed' })
-      .eq('id', bookingId);
-
-    const { data: patient } = await this.supabase
-      .from('users')
-      .select('email')
-      .eq('id', (
+    // Make sure we send the raw buffer, NOT an object
+    if (Buffer.isBuffer(fileBuffer) || fileBuffer instanceof Uint8Array) {
+      uploadStream.end(fileBuffer);
+    } else {
+      reject(new Error('fileBuffer must be a Buffer or Uint8Array'));
+    }
+  });
+  const { data, error } = await this.supabase.from('medical_records').insert([
+    {
+      booked_test_id: bookingId,
+      patient_id: (
         await this.supabase
           .from('booked_lab_tests')
           .select('patient_id')
           .eq('id', bookingId)
           .single()
-      ).data?.patient_id)
-      .single();
+      ).data?.patient_id,
+      title: 'Lab Scan',
+      record_type: 'scan',
+      date: new Date().toISOString(),
+      file_url: uploaded.secure_url,
+      doctor_name,
+    },
+  ]);
 
-    if (patient?.email) {
-      await this.sendEmail(
-        patient.email,
-        'Lab Scan Available',
-        `Your lab scan for booking ID ${bookingId} is now available.`,
-      );
-    }
+  if (error) throw new Error(error.message);
 
-    return data;
+  await this.supabase
+    .from('booked_lab_tests')
+    .update({ status: 'completed' })
+    .eq('id', bookingId);
+
+  const { data: patient } = await this.supabase
+    .from('users')
+    .select('email')
+    .eq('id', (
+      await this.supabase
+        .from('booked_lab_tests')
+        .select('patient_id')
+        .eq('id', bookingId)
+        .single()
+    ).data?.patient_id)
+    .single();
+
+  if (patient?.email) {
+    await this.sendEmail(
+      patient.email,
+      'Lab Scan Available',
+      `Your lab scan for booking ID ${bookingId} is now available.`,
+    );
   }
+
+  return data;
+}
+
 
 
 
@@ -287,6 +302,10 @@ async getBookingsByTechnician(techId: string) {
         id,
         email
       ),
+      test:lab_tests!booked_lab_tests_test_id_fkey (
+        name,
+        record_type
+      ),
       medical_records!booked_test_id (
         record_type,
         title,
@@ -298,22 +317,27 @@ async getBookingsByTechnician(techId: string) {
 
   if (error) throw new Error(error.message);
 
-  return data.map((item: any) => ({
-    id: item.id,
-    testId: item.test_id,
-    testName: item.medical_records?.[0]?.title || "", 
-    scheduledDate: new Date(item.scheduled_date),
-    scheduledTime: item.scheduled_time,
-    status: item.status,
-    bookedAt: item.booked_at,
-    location: item.location || "",
-    instructions: item.instructions || undefined,
-    patientName: item.patient?.email || "Unknown",
-    type: item.medical_records?.[0]?.record_type || "lab-result",
-    uploadedAt: item.medical_records?.[0]?.date ? new Date(item.medical_records[0].date) : undefined,
-    reportFile: undefined
-  }));
+  return data.map((item: any) => {
+    const medicalRecord = item.status === 'completed' ? item.medical_records?.[0] : null;
+
+    return {
+      id: item.id,
+      testId: item.test_id,
+      testName: item.test?.name || "",
+      scheduledDate: new Date(item.scheduled_date),
+      scheduledTime: item.scheduled_time,
+      status: item.status,
+      bookedAt: item.booked_at,
+      location: item.location || "",
+      instructions: item.instructions || undefined,
+      patientName: item.patient?.email || "Unknown",
+      type: item.test?.record_type || "lab-result",
+      uploadedAt: medicalRecord?.date ? new Date(medicalRecord.date) : undefined,
+      reportFile: medicalRecord?.file_url || undefined
+    };
+  });
 }
+
 
 
 

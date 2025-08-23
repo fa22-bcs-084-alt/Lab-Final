@@ -7,11 +7,11 @@ import {
   Patch,
   UploadedFile,
   UseInterceptors,
-  Inject
+  Inject,
+  BadRequestException
 } from '@nestjs/common'
-import { FileInterceptor } from '@nestjs/platform-express'
+import { FileInterceptor ,} from '@nestjs/platform-express'
 import { ClientProxy } from '@nestjs/microservices'
-
 @Controller('booked-lab-tests')
 export class BookingsController {
 
@@ -48,18 +48,29 @@ export class BookingsController {
     return this.client.send({ cmd: 'get_technician_bookings' }, techId)
   }
 
-  @Post(':id/upload-scan')
-  @UseInterceptors(FileInterceptor('file'))
-  async uploadScan(
-    @Param('id') bookingId: string,
-    @UploadedFile() file: Express.Multer.File,
-    @Body('doctor_name') doctor_name?: string
-  ) {
-    return this.client.send(
-      { cmd: 'upload_scan' },
-      { bookingId, file, doctor_name }
-    )
+@Post(':id/upload-scan')
+@UseInterceptors(FileInterceptor('file'))
+async uploadScan(
+  @Param('id') bookingId: string,
+  @UploadedFile() file: Express.Multer.File,
+  @Body('doctor_name') doctor_name?: string
+) {
+  if (!file) throw new BadRequestException('File is required');
+
+  // send file buffer or path to microservice
+return this.client.send(
+  { cmd: 'upload_scan' },
+  {
+    bookingId,
+    fileBuffer: file.buffer.toString('base64'),
+    fileName: file.originalname,
+    doctor_name,
   }
+);
+
+
+}
+
 
   @Post(':id/upload-result')
   async uploadResult(

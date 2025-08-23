@@ -6,9 +6,14 @@ import {
   Post, 
   Req, 
   BadRequestException, 
-  UnauthorizedException 
+  UnauthorizedException, 
+  Query,
+  UseInterceptors,
+  UploadedFile
 } from '@nestjs/common'
 import { ClientProxy } from '@nestjs/microservices'
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { firstValueFrom } from 'rxjs'
 
 @Controller('auth')
@@ -26,6 +31,64 @@ export class AuthController {
       throw new BadRequestException(e?.message || 'register failed')
     }
   }
+
+
+   
+@Get('user')
+async getUser(@Query('id') id: string, @Query('role') role: string) {
+  try {
+    console.log("Query params:", { id, role })
+
+    return await firstValueFrom(
+      this.authClient.send({ cmd: 'user-data' }, { id, role })
+    )
+  } catch (e: any) {
+    throw new BadRequestException(e?.message || 'Failed to fetch user')
+  }
+}
+
+
+@Post('user')
+async upsertUser(
+  @Query('role') role: string,
+  @Body() profileData: Record<string, any>
+) {
+  try {
+    return await firstValueFrom(
+      this.authClient.send(
+        { cmd: 'upsert-user-profile' },
+        { role, profileData }
+      )
+    )
+  } catch (e: any) {
+    throw new BadRequestException(e?.message || 'Failed to upsert user profile')
+  }
+}
+
+
+
+@Post('/profile-pic')
+@UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+async uploadUserPhoto(
+  @Query('role') role: string,
+  @Query('userId') userId: string,
+  @UploadedFile() file: Express.Multer.File
+) {
+  if (!file) {
+    console.log("no file")
+    throw new BadRequestException('File is required');
+  }
+
+  console.log(file); // should now log the file with buffer
+  return await firstValueFrom(
+    this.authClient.send(
+      { cmd: 'upload-user-photo' },
+      { role, userId, fileBuffer: file.buffer }
+    )
+  );
+}
+
+
 
   @Post('verify-otp')
   async verifyOtp(@Body() body: { email: string; otp: string }) {

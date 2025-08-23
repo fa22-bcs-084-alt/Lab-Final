@@ -1,4 +1,4 @@
-import { Body, Controller, Post, Get, Req, Res, UseGuards } from '@nestjs/common'
+import { Body, Controller, Post, Get, Req, Res, UseGuards, UnauthorizedException } from '@nestjs/common'
 import { AuthService } from './auth.service'
 import { JwtService } from '@nestjs/jwt'
 import type {  Response } from 'express'
@@ -63,6 +63,29 @@ async googleCallback(@Req() req, @Res() res: Response) {
   async resetPasswordMs(data: { email: string; otp: string; newPassword: string }) {
     return this.auth.resetPassword(data.email, data.otp, data.newPassword)
   }
+
+@MessagePattern({ cmd: 'user-data' })
+async getUserData(payload: { id: string; role: string }) {
+  const { id, role } = payload
+  return await this.auth.getUserByRoleAndId(role, id)
+}
+
+
+@MessagePattern({ cmd: 'upload-user-photo' })
+async uploadUserPhoto(payload: { role: string; userId: string; fileBuffer: Buffer }) {
+  const { role, userId, fileBuffer } = payload
+  return await this.auth.upsertUserProfilePhoto(role, userId, fileBuffer)
+}
+
+
+@MessagePattern({ cmd: 'upsert-user-profile' })
+async upsertUserProfile(payload: { role: string; profileData: Record<string, any> }) {
+  const { role, profileData } = payload
+  return await this.auth.upsertUserProfileByRole(role, profileData.profileData)
+}
+
+
+
 
   @MessagePattern({ cmd: 'me' })
   async meMs(token: string) {

@@ -36,17 +36,25 @@ export class BookingsController {
     return this.bookedLabTestsService.getBookingsByTechnician(techId)
   }
 
-  @MessagePattern({ cmd: 'upload_scan' })
-  async uploadScan(
-    @Payload()
-    data: {
-      bookingId: string
-      file: Express.Multer.File
-      doctor_name?: string
-    }
-  ) {
-    return this.bookedLabTestsService.uploadScan(data.bookingId, data.file, data.doctor_name)
+@MessagePattern({ cmd: 'upload_scan' })
+async uploadScan(
+  @Payload()
+  data: {
+    bookingId: string
+    fileBuffer: string // base64
+    fileName: string
+    doctor_name?: string
   }
+) {
+  const buffer = Buffer.from(data.fileBuffer, 'base64');
+  return this.bookedLabTestsService.uploadScan(
+    data.bookingId,
+    buffer,
+    data.fileName,
+    data.doctor_name
+  );
+}
+
 
   @MessagePattern({ cmd: 'upload_result' })
   async uploadResult(
