@@ -17,7 +17,7 @@ async def index_record(
     title: str = Form(None),
     recordType: str = Form(None),
     doctorName: str = Form(None),
-    fileUrl: str = Form(None),
+  
     file: UploadFile = None
 ):
     if file:
@@ -33,8 +33,7 @@ async def index_record(
         "recordId": recordId,
         "title": title,
         "recordType": recordType,
-        "doctorName": doctorName,
-        "fileUrl": fileUrl
+        "doctorName": doctorName
     }
     res = upsert_document(payload, data)
     return JSONResponse(res)

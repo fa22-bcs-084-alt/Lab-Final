@@ -5,12 +5,16 @@ import { v2 as cloudinary } from 'cloudinary';
 import PDFDocument from 'pdfkit';
 import { Readable } from 'stream';
 import * as nodemailer from 'nodemailer';
+  import axios from 'axios'
+import FormData from 'form-data'
+
 
 @Injectable()
 export class BookingsService {
   private supabase: SupabaseClient;
   private lastAssignedIndex = 0;
   private transporter: nodemailer.Transporter;
+  private readonly fastApiUrl: string
 
   constructor(private configService: ConfigService) {
     this.supabase = createClient(
@@ -31,6 +35,9 @@ export class BookingsService {
         pass: this.configService.get<string>('SMTP_PASSWORD'),
       },
     });
+
+    this.fastApiUrl = this.configService.get<string>('FASTAPI_URL') || 'http://localhost:4004/medical-records/index'
+
   }
 
   private async sendEmail(to: string, subject: string, text: string) {
@@ -153,82 +160,95 @@ export class BookingsService {
     return data;
   }
 
-  async uploadResult(
-    bookingId: string,
-    body: { title: string; resultData: string; doctor_name?: string },
-  ) {
-    const doc = new PDFDocument();
-    const chunks: Buffer[] = [];
 
-    doc.on('data', (chunk) => chunks.push(chunk));
-    doc.on('end', async () => {});
-    doc.text(body.resultData);
-    doc.end();
 
-    await new Promise<void>((resolve) => doc.on('end', resolve));
-    const pdfBuffer = Buffer.concat(chunks);
+async uploadResult(
+  bookingId: string,
+  body: { title: string; resultData: string; doctor_name?: string },
+) {
+  // generate PDF
+  const doc = new PDFDocument()
+  const chunks: Buffer[] = []
 
-    const uploaded = await new Promise<any>((resolve, reject) => {
-      const stream = cloudinary.uploader.upload_stream(
-        { folder: 'medical_records/results', resource_type: 'auto', format: 'pdf' },
-        (error, result) => {
-          if (error) reject(error);
-          else resolve(result);
-        },
-      );
-      const readable = new Readable();
-      readable.push(pdfBuffer);
-      readable.push(null);
-      readable.pipe(stream);
-    });
+  doc.on('data', (chunk) => chunks.push(chunk))
+  doc.text(body.resultData)
+  doc.end()
+  await new Promise<void>((resolve) => doc.on('end', resolve))
+  const pdfBuffer = Buffer.concat(chunks)
 
-    const { data, error } = await this.supabase.from('medical_records').insert([
-      {
-        booked_test_id: bookingId,
-        patient_id: (
-          await this.supabase
-            .from('booked_lab_tests')
-            .select('patient_id')
-            .eq('id', bookingId)
-            .single()
-        ).data?.patient_id,
-        title: body.title,
-        record_type: 'report',
-        date: new Date().toISOString(),
-        file_url: uploaded.secure_url,
-        doctor_name: body.doctor_name,
-      },
-    ]);
+  // upload to Cloudinary
+  const uploaded = await new Promise<any>((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      { folder: 'medical_records/results', resource_type: 'auto', format: 'pdf' },
+      (error, result) => (error ? reject(error) : resolve(result)),
+    )
+    const readable = new Readable()
+    readable.push(pdfBuffer)
+    readable.push(null)
+    readable.pipe(stream)
+  })
 
-    if (error) throw new Error(error.message);
-
+  // save in Supabase
+  const patientId = (
     await this.supabase
       .from('booked_lab_tests')
-      .update({ status: 'completed' })
-      .eq('id', bookingId);
+      .select('patient_id')
+      .eq('id', bookingId)
+      .single()
+  ).data?.patient_id
 
-    const { data: patient } = await this.supabase
-      .from('users')
-      .select('email')
-      .eq('id', (
-        await this.supabase
-          .from('booked_lab_tests')
-          .select('patient_id')
-          .eq('id', bookingId)
-          .single()
-      ).data?.patient_id)
-      .single();
+  const { data, error } = await this.supabase.from('medical_records').insert([
+    {
+      booked_test_id: bookingId,
+      patient_id: patientId,
+      title: body.title,
+      record_type: 'report',
+      date: new Date().toISOString(),
+      file_url: uploaded.secure_url,
+      doctor_name: body.doctor_name,
+    },
+  ])
 
-    if (patient?.email) {
-      await this.sendEmail(
-        patient.email,
-        'Lab Report Available',
-        `Your lab report "${body.title}" for booking ID ${bookingId} is now available.`,
-      );
-    }
+  if (error) throw new Error(error.message)
 
-    return data;
+  // update booking status
+  await this.supabase
+    .from('booked_lab_tests')
+    .update({ status: 'completed' })
+    .eq('id', bookingId)
+
+  // send email
+  const { data: patient } = await this.supabase
+    .from('users')
+    .select('email')
+    .eq('id', patientId)
+    .single()
+
+  if (patient?.email) {
+    await this.sendEmail(
+      patient.email,
+      'Lab Report Available',
+      `Your lab report "${body.title}" for booking ID ${bookingId} is now available.`,
+    )
   }
+
+  // --- send to FastAPI /index ---
+  const formData = new FormData()
+  formData.append('patientId', patientId)
+  formData.append('recordId', (data as any)[0].id)
+  formData.append('title', body.title)
+  formData.append('recordType', 'report')
+  formData.append('doctorName', body.doctor_name || '')
+  formData.append('fileUrl', uploaded.secure_url)
+  formData.append('file', pdfBuffer, { filename: `${body.title}.pdf`, contentType: 'application/pdf' })
+
+  await axios.post(this.fastApiUrl, formData, {
+    headers: formData.getHeaders(),
+  })
+
+  return data
+}
+
 
   async getBookingsByPatient(patientId: string) {
     const { data, error } = await this.supabase

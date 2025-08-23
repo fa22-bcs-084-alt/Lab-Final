@@ -3,10 +3,14 @@ import { ConfigService } from '@nestjs/config'
 import { SupabaseClient, createClient } from '@supabase/supabase-js'
 import { UploadApiResponse, v2 as cloudinary } from 'cloudinary'
 import { Readable } from 'stream'
+import axios from 'axios'
+import FormData from 'form-data'
 
 @Injectable()
 export class MedicalRecordsService {
   private readonly supabase: SupabaseClient
+    private readonly fastApiUrl: string
+
 
   constructor(private configService: ConfigService) {
     this.supabase = createClient(
@@ -19,6 +23,8 @@ export class MedicalRecordsService {
       api_key: this.configService.get<string>('CLOUDINARY_API_KEY'),
       api_secret: this.configService.get<string>('CLOUDINARY_API_SECRET'),
     })
+    this.fastApiUrl = this.configService.get<string>('FASTAPI_URL') || 'http://localhost:4004/medical-records/index'
+
   }
 
   async uploadFile(patientId: string, file: Express.Multer.File, dto) {
@@ -49,6 +55,23 @@ export class MedicalRecordsService {
       }])
       .select()
       .single()
+
+
+  const formData = new FormData()
+formData.append('patientId', patientId)
+formData.append('recordId', data.id)
+formData.append('title', dto.title)
+formData.append('recordType', dto.recordType)
+formData.append('doctorName', dto.doctor_name)
+
+// append file correctly as Buffer
+formData.append('file', file.buffer, { filename: file.originalname, contentType: file.mimetype })
+
+const res=await axios.post(this.fastApiUrl, formData, {
+  headers: formData.getHeaders()  // set correct multipart headers
+})
+
+console.log("response from fast api indexer=",res)
 
     if (error) throw error
     return data
