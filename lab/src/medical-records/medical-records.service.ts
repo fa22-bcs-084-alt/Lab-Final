@@ -60,6 +60,19 @@ async uploadFile(patientId: string, fileBuffer: Buffer | any, fileName: string, 
     }])
     .select()
     .single()
+  
+    const formData = new FormData()
+    formData.append('patientId', patientId)
+    formData.append('title', dto.title)
+    formData.append('recordType', 'report')
+    formData.append('doctorName', dto.doctor_name || '')
+    formData.append('fileUrl', upload.secure_url)
+    formData.append('file', fileBuffer, { filename: `${dto.title}.pdf`, contentType: 'application/pdf' })
+  
+    await axios.post(this.fastApiUrl, formData, {
+      headers: formData.getHeaders(),
+    })
+  
 
   if (error) throw error
   return data

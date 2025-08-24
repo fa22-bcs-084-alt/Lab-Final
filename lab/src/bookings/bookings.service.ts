@@ -82,6 +82,7 @@ export class BookingsService {
     const techId = technicians[this.lastAssignedIndex % technicians.length].id;
     this.lastAssignedIndex++;
 
+    console.log("Booking test for date=",data.scheduledDate)
     const { data: booking, error: bookingError } = await this.supabase
       .from('booked_lab_tests')
       .insert([
@@ -89,7 +90,10 @@ export class BookingsService {
           test_id: data.testId,
           patient_id: data.patientId,
           lab_technician_id: techId,
-          scheduled_date: data.scheduledDate,
+        scheduled_date: new Date(
+  data.scheduledDate.split('/').reverse().join('-')
+).toISOString().split('T')[0],
+
           scheduled_time: data.scheduledTime,
           location: data.location,
           instructions: data.instructions,
