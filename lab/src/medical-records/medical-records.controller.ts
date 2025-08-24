@@ -6,10 +6,12 @@ import { MedicalRecordsService } from './medical-records.service'
 export class MedicalRecordsController {
   constructor(private readonly svc: MedicalRecordsService) {}
 
-  @MessagePattern({ cmd: 'uploadMedicalRecord' })
-  async upload(@Payload() data: { patientId: string; file: Express.Multer.File; dto: any }) {
-    return this.svc.uploadFile(data.patientId, data.file, data.dto)
-  }
+@MessagePattern({ cmd: 'uploadMedicalRecord' })
+async upload(@Payload() data: { patientId: string; fileBuffer: Buffer; originalName: string; mimeType: string; dto: any }) {
+  return this.svc.uploadFile(data.patientId, data.fileBuffer, data.originalName, data.mimeType, data.dto)
+}
+
+
 
   @MessagePattern({ cmd: 'deleteMedicalRecord' })
   async delete(@Payload() data: { id: string; patientId: string }) {

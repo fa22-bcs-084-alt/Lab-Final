@@ -9,6 +9,18 @@ import * as nodemailer from 'nodemailer';
 import FormData from 'form-data'
 
 
+export interface BookedLabTest {
+  id: string
+  testId: string
+  testName: string
+  scheduledDate: Date
+  scheduledTime: string
+  status: "pending" | "completed" | "cancelled"
+  bookedAt: string
+  location: string
+  instructions?: string[]
+}
+
 @Injectable()
 export class BookingsService {
   private supabase: SupabaseClient;
@@ -264,15 +276,44 @@ async uploadResult(
 }
 
 
-async getBookingsByPatient(patientId: string) {
-    const { data, error } = await this.supabase
-      .from('booked_lab_tests')
-      .select('*')
-      .eq('patient_id', patientId);
 
-    if (error) throw new Error(error.message);
-    return data;
-  }
+
+async getBookingsByPatient(patientId: string): Promise<BookedLabTest[]> {
+  const { data: bookings, error: bookingsError } = await this.supabase
+    .from('booked_lab_tests')
+    .select('*')
+    .eq('patient_id', patientId);
+
+  if (bookingsError) throw new Error(bookingsError.message);
+  if (!bookings?.length) return [];
+
+  // Get all unique test IDs
+  const testIds = bookings.map(b => b.test_id);
+  
+  const { data: labTests, error: labTestsError } = await this.supabase
+    .from('lab_tests')
+    .select('id, name')
+    .in('id', testIds);
+
+  if (labTestsError) throw new Error(labTestsError.message);
+
+  // Map test IDs to names for quick lookup
+  const testMap = new Map(labTests.map(t => [t.id, t.name]));
+
+  return bookings.map(item => ({
+    id: item.id,
+    testId: item.test_id,
+    testName: testMap.get(item.test_id) || 'Unknown',
+    scheduledDate: new Date(item.scheduled_date),
+    scheduledTime: item.scheduled_time,
+    status: item.status as "pending" | "completed" | "cancelled",
+    bookedAt: item.booked_at,
+    location: item.location || '',
+    instructions: item.instructions || []
+  }));
+}
+
+
 
   async cancelBooking(bookingId: string) {
     const { data, error } = await this.supabase
@@ -303,7 +344,9 @@ async getBookingsByTechnician(techId: string) {
         email
       ),
       test:lab_tests!booked_lab_tests_test_id_fkey (
+        id,
         name,
+        category,
         record_type
       ),
       medical_records!booked_test_id (
@@ -317,13 +360,14 @@ async getBookingsByTechnician(techId: string) {
 
   if (error) throw new Error(error.message);
 
-  return data.map((item: any) => {
+  const bookings = data.map((item: any) => {
     const medicalRecord = item.status === 'completed' ? item.medical_records?.[0] : null;
 
     return {
       id: item.id,
       testId: item.test_id,
       testName: item.test?.name || "",
+      testCategory: item.test?.category || "Others",
       scheduledDate: new Date(item.scheduled_date),
       scheduledTime: item.scheduled_time,
       status: item.status,
@@ -336,7 +380,35 @@ async getBookingsByTechnician(techId: string) {
       reportFile: medicalRecord?.file_url || undefined
     };
   });
+
+  // Weekly completed count
+  const weeklyData = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day, i) => {
+    const completed = bookings.filter(
+      b => b.status === 'completed' && new Date(b.scheduledDate).getDay() === i
+    ).length;
+    return { day, completed };
+  });
+
+  // Dynamic test category completed count with random colors
+  const categoryMap: Record<string, { count: number; color: string }> = {};
+  bookings.forEach(b => {
+    if (b.status !== 'completed') return;
+    const cat = b.testCategory || "Others";
+    if (!categoryMap[cat]) {
+      categoryMap[cat] = { count: 0, color: `#${Math.floor(Math.random() * 16777215).toString(16)}` };
+    }
+    categoryMap[cat].count += 1;
+  });
+
+  const testCategoryData = Object.entries(categoryMap).map(([category, data]) => ({
+    category,
+    count: data.count,
+    color: data.color
+  }));
+
+  return { bookings, weeklyData, testCategoryData };
 }
+
 
 
 

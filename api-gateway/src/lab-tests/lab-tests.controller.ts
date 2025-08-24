@@ -15,6 +15,7 @@ export class LabTestsController {
 
   @Get()
   async findAll() {
+   
     return firstValueFrom(this.labTestsClient.send({ cmd: 'getAllLabTests' }, {}))
   }
 

@@ -27,80 +27,87 @@ export class MedicalRecordsService {
 
   }
 
-  async uploadFile(patientId: string, file: Express.Multer.File, dto) {
-    const upload = await new Promise<UploadApiResponse>((resolve, reject) => {
-      const stream = cloudinary.uploader.upload_stream(
-        {
-          folder: 'medical-records',
-          resource_type: 'auto', // handles images & pdfs
-          format: file.mimetype === 'application/pdf' ? 'pdf' : undefined,
-        },
-        (err, result) => {
-          if (err) return reject(err)
-          resolve(result as UploadApiResponse)
-        },
-      )
-      Readable.from(file.buffer).pipe(stream)
-    })
-
-    const { data, error } = await this.supabase
-      .from('medical_records')
-      .insert([{
-        booked_test_id: dto.bookedTestId,
-        patient_id: patientId,
-        title: dto.title,
-        record_type: dto.recordType,
-        file_url: upload.secure_url,
-        doctor_name: dto.doctor_name,
-      }])
-      .select()
-      .single()
-
-
-  const formData = new FormData()
-formData.append('patientId', patientId)
-formData.append('recordId', data.id)
-formData.append('title', dto.title)
-formData.append('recordType', dto.recordType)
-formData.append('doctorName', dto.doctor_name)
-
-// append file correctly as Buffer
-formData.append('file', file.buffer, { filename: file.originalname, contentType: file.mimetype })
-
-const res=await axios.post(this.fastApiUrl, formData, {
-  headers: formData.getHeaders()  // set correct multipart headers
-})
-
-console.log("response from fast api indexer=",res)
-
-    if (error) throw error
-    return data
+async uploadFile(patientId: string, fileBuffer: Buffer | any, fileName: string, mimeType: string, dto) {
+  // Reconstruct buffer if it's serialized
+  if (fileBuffer && fileBuffer.type === 'Buffer') {
+    fileBuffer = Buffer.from(fileBuffer.data)
   }
 
-  async deleteRecord(id: string, patientId: string) {
-    const { data, error } = await this.supabase
-      .from('medical_records')
-      .delete()
-      .eq('id', id)
-      .eq('patient_id', patientId)
-      .select()
-      .single()
+  const upload = await new Promise<UploadApiResponse>((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder: 'medical-records',
+        resource_type: 'auto',
+        format: mimeType === 'application/pdf' ? 'pdf' : undefined,
+      },
+      (err, result) => {
+        if (err) return reject(err)
+        resolve(result as UploadApiResponse)
+      },
+    )
+    Readable.from(fileBuffer).pipe(stream)
+  })
 
-    if (error) throw error
+  const { data, error } = await this.supabase
+    .from('medical_records')
+    .insert([{
+      booked_test_id: dto.bookedTestId,
+      patient_id: patientId,
+      title: dto.title,
+      record_type: dto.recordType,
+      file_url: upload.secure_url,
+      doctor_name: dto.doctor_name,
+    }])
+    .select()
+    .single()
 
-    if (data?.file_url) {
-      const parts = data.file_url.split('/')
-      const filename = parts.pop()
-      const publicId = filename?.split('.')[0]
-      if (publicId) {
-        await cloudinary.uploader.destroy(`medical-records/${publicId}`, {
-          resource_type: 'auto',
-        })
-      }
+  if (error) throw error
+  return data
+}
+
+
+async deleteRecord(id: string, patientId: string) {
+  console.log('[Lab MS] Delete called with id:', id, 'patientId:', patientId)
+
+  const { data, error } = await this.supabase
+    .from('medical_records')
+    .delete()
+    .eq('id', id)
+    .select()
+    .maybeSingle() // avoids crashing if record doesn't exist
+
+  if (error) {
+    console.log('[Lab MS] Supabase error:', error)
+    throw error
+  }
+
+  if (!data) {
+    console.log('[Lab MS] No record found with id:', id)
+    throw new Error('Record not found')
+  }
+
+  console.log('[Lab MS] Record found, deleting file if exists:', data.file_url)
+
+  if (data?.file_url) {
+    const parts = data.file_url.split('/')
+    const filename = parts.pop()
+    const publicId = filename?.split('.')[0]
+
+    console.log('[Lab MS] Deleting file from Cloudinary, publicId:', publicId)
+
+    if (publicId) {
+      const result = await cloudinary.uploader.destroy(`medical-records/${publicId}`, {
+        resource_type: 'raw',
+      })
+      
+      console.log('[Lab MS] Cloudinary delete result:', result)
     }
-
-    return { success: true, deletedId: id }
   }
+
+  console.log('[Lab MS] Record deletion successful:', id)
+  return { success: true, deletedId: id }
+}
+
 
   async downloadFile(id: string, patientId: string) {
     const { data, error } = await this.supabase
