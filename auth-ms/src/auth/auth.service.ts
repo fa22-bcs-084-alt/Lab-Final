@@ -5,44 +5,52 @@ import { JwtService } from '@nestjs/jwt'
 import * as crypto from 'crypto'
 import { MailerService } from 'src/mailer-service/mailer-service.service'
 import { ConfigService } from '@nestjs/config'
-import { UploadApiResponse, v2 as cloudinary } from 'cloudinary'
+import { v2 as cloudinary } from 'cloudinary'
 import { Readable } from 'stream'
+
 @Injectable()
 export class AuthService {
   constructor(
     private supabase: SupabaseService,
     private jwt: JwtService,
-     private mailer: MailerService,
-     private configService: ConfigService
-     
+    private mailer: MailerService,
+    private configService: ConfigService
   ) {
-
-     cloudinary.config({
+    cloudinary.config({
       cloud_name: this.configService.get<string>('CLOUDINARY_CLOUD_NAME'),
       api_key: this.configService.get<string>('CLOUDINARY_API_KEY'),
       api_secret: this.configService.get<string>('CLOUDINARY_API_SECRET'),
     })
   }
 
-
   private async sendOtpEmail(email: string, otp: string, subject: string, message: string) {
-  await this.mailer.sendMail(email, subject, `${message}\n\nYour OTP: ${otp}`)
-}
+    console.log(`[INFO: AUTH SERVICE] Sending OTP email to ${email}`)
+    await this.mailer.sendMail(email, subject, `${message}\n\nYour OTP: ${otp}`)
+  }
 
-async verifyResetOtp(email: string, otp: string) {
-  const { data, error } = await this.supabase.getClient()
-    .from('users')
-    .select('*')
-    .eq('email', email)
-    .single()
+  async verifyResetOtp(email: string, otp: string) {
+    console.log(`[INFO: AUTH SERVICE] Verifying reset OTP for ${email}`)
+    const { data, error } = await this.supabase.getClient()
+      .from('users')
+      .select('*')
+      .eq('email', email)
+      .single()
 
-  if (error || !data) throw new UnauthorizedException('Invalid email')
-  if (data.otp !== otp) throw new BadRequestException('Invalid OTP')
+    if (error || !data) {
+      console.error(`[INFO: AUTH SERVICE] Invalid email for reset OTP: ${email}`)
+      throw new UnauthorizedException('Invalid email')
+    }
+    if (data.otp !== otp) {
+      console.error(`[INFO: AUTH SERVICE] Invalid OTP for ${email}`)
+      throw new BadRequestException('Invalid OTP')
+    }
 
-  return { success: true, message: 'OTP verified successfully' }
-}
+    console.log(`[INFO: AUTH SERVICE] OTP verified successfully for ${email}`)
+    return { success: true, message: 'OTP verified successfully' }
+  }
 
   async register(email: string, password: string) {
+    console.log(`[INFO: AUTH SERVICE] Registering new user with email: ${email}`)
     const hash = await bcrypt.hash(password, 10)
     const otp = crypto.randomInt(100000, 999999).toString()
 
@@ -52,6 +60,7 @@ async verifyResetOtp(email: string, otp: string) {
       .select()
 
     if (error) {
+      console.error(`[INFO: AUTH SERVICE] Registration error for ${email}: ${error.message}`)
       if (error.code === '23505') {
         throw new ConflictException('Email already exists')
       }
@@ -59,101 +68,116 @@ async verifyResetOtp(email: string, otp: string) {
     }
 
     await this.sendOtpEmail(email, otp, 'Verify your account', 'Welcome! Please verify your email using the OTP below.')
-    return { message: 'Registered successfully, OTP sent to email',success:true }
+    return { message: 'Registered successfully, OTP sent to email', success: true }
   }
 
+  async registerOAuth(email: string) {
+    console.log(`[INFO: AUTH SERVICE] Registering OAuth user with email: ${email}`)
+    const { data: existingUser, error: fetchError } = await this.supabase.getClient()
+      .from('users')
+      .select('id')
+      .eq('email', email)
+      .single()
 
-async registerOAuth(email: string) {
-  // check if user already exists
-  const { data: existingUser, error: fetchError } = await this.supabase.getClient()
-    .from('users')
-    .select('id')
-    .eq('email', email)
-    .single()
+    if (fetchError && fetchError.code !== 'PGRST116') {
+      console.error(`[INFO: AUTH SERVICE] OAuth fetch error: ${fetchError.message}`)
+      throw new Error(fetchError.message)
+    }
 
-  if (fetchError && fetchError.code !== 'PGRST116') { 
-    // PGRST116 = no rows found (safe to ignore)
-    throw new Error(fetchError.message)
+    if (existingUser) {
+      console.log(`[INFO: AUTH SERVICE] OAuth user already exists: ${email}`)
+      return { message: 'User already exists', success: false }
+    }
+
+    const { error: insertError } = await this.supabase.getClient()
+      .from('users')
+      .insert([{ email, password_hash: '', role: 'patient', otp: 0, is_verified: true }])
+
+    if (insertError) {
+      console.error(`[INFO: AUTH SERVICE] OAuth registration error: ${insertError.message}`)
+      throw new Error(insertError.message)
+    }
+
+    console.log(`[INFO: AUTH SERVICE] OAuth user registered successfully: ${email}`)
+    return { message: 'Registered successfully', success: true }
   }
 
-  if (existingUser) {
-    return { message: 'User already exists', success: false }
-  }
-
-  // insert new user
-  const { error: insertError } = await this.supabase.getClient()
-    .from('users')
-    .insert([{ 
-      email, 
-      password_hash: '', 
-      role: 'patient', 
-      otp: 0, 
-      is_verified: true 
-    }])
-
-  if (insertError) {
-    throw new Error(insertError.message)
-  }
-
-  return { message: 'Registered successfully', success: true }
-}
-
-
-
-  
   async verifyOtp(email: string, otp: string) {
+    console.log(`[INFO: AUTH SERVICE] Verifying OTP for ${email}`)
     const { data, error } = await this.supabase.getClient()
       .from('users')
       .select('*')
       .eq('email', email)
       .single()
 
-    if (error || !data) throw new UnauthorizedException('Invalid email')
-    if (data.otp !== otp) throw new BadRequestException('Invalid OTP')
+    if (error || !data) {
+      console.error(`[INFO: AUTH SERVICE] Invalid email for OTP verification: ${email}`)
+      throw new UnauthorizedException('Invalid email')
+    }
+    if (data.otp !== otp) {
+      console.error(`[INFO: AUTH SERVICE] Invalid OTP for ${email}`)
+      throw new BadRequestException('Invalid OTP')
+    }
 
     await this.supabase.getClient()
       .from('users')
       .update({ is_verified: true, otp: null })
       .eq('email', email)
 
-    return {success: true, message: 'Email verified successfully' }
+    console.log(`[INFO: AUTH SERVICE] OTP verified successfully for ${email}`)
+    return { success: true, message: 'Email verified successfully' }
   }
 
   async validateUser(email: string, pass: string) {
+    console.log(`[INFO: AUTH SERVICE] Validating user ${email}`)
     const { data, error } = await this.supabase.getClient()
       .from('users')
       .select('*')
       .eq('email', email)
       .single()
 
-    if (error || !data) throw new UnauthorizedException('invalid creds')
-    if (!data.is_verified) throw new UnauthorizedException('Email not verified')
+    if (error || !data) {
+      console.error(`[INFO: AUTH SERVICE] Invalid credentials for ${email}`)
+      throw new UnauthorizedException('invalid creds')
+    }
+    if (!data.is_verified) {
+      console.error(`[INFO: AUTH SERVICE] Email not verified: ${email}`)
+      throw new UnauthorizedException('Email not verified')
+    }
 
     const isMatch = await bcrypt.compare(pass, data.password_hash)
-    if (!isMatch) throw new UnauthorizedException('invalid creds')
+    if (!isMatch) {
+      console.error(`[INFO: AUTH SERVICE] Password mismatch for ${email}`)
+      throw new UnauthorizedException('invalid creds')
+    }
 
+    console.log(`[INFO: AUTH SERVICE] User validated: ${email}`)
     return data
   }
 
   async login(user: any) {
+    console.log(`[INFO: AUTH SERVICE] Logging in user ${user.email}`)
     const payload = { sub: user.id, email: user.email, role: user.role }
     return {
       accessToken: this.jwt.sign(payload),
       role: user.role,
-    id: user.id
+      id: user.id,
+      success: true,
+      message: 'Login successful'
     }
   }
 
   async requestPasswordReset(email: string) {
+    console.log(`[INFO: AUTH SERVICE] Password reset requested for ${email}`)
+    const { data: existingUser, error: fetchError } = await this.supabase.getClient()
+      .from('users')
+      .select('id')
+      .eq('email', email)
+      .single()
 
-     const { data: existingUser, error: fetchError } = await this.supabase.getClient()
-    .from('users')
-    .select('id')
-    .eq('email', email)
-    .single()
-
-    if(!existingUser){
-       return { message: 'No Such user found',success:false }
+    if (!existingUser) {
+      console.error(`[INFO: AUTH SERVICE] No such user found: ${email}`)
+      return { message: 'No Such user found', success: false }
     }
     const otp = crypto.randomInt(100000, 999999).toString()
 
@@ -162,21 +186,31 @@ async registerOAuth(email: string) {
       .update({ otp })
       .eq('email', email)
 
-    if (error) throw new Error(error.message)
+    if (error) {
+      console.error(`[INFO: AUTH SERVICE] Failed to update OTP for ${email}: ${error.message}`)
+      throw new Error(error.message)
+    }
 
     await this.sendOtpEmail(email, otp, 'Password Reset Request', 'Use the OTP below to reset your password.')
-    return { message: 'Password reset OTP sent to email',success:true }
+    return { message: 'Password reset OTP sent to email', success: true }
   }
 
   async resetPassword(email: string, otp: string, newPassword: string) {
+    console.log(`[INFO: AUTH SERVICE] Resetting password for ${email}`)
     const { data, error } = await this.supabase.getClient()
       .from('users')
       .select('*')
       .eq('email', email)
       .single()
 
-    if (error || !data) throw new UnauthorizedException('Invalid email')
-    if (data.otp !== otp) throw new BadRequestException('Invalid OTP')
+    if (error || !data) {
+      console.error(`[INFO: AUTH SERVICE] Invalid email for password reset: ${email}`)
+      throw new UnauthorizedException('Invalid email')
+    }
+    if (data.otp !== otp) {
+      console.error(`[INFO: AUTH SERVICE] Invalid OTP for password reset: ${email}`)
+      throw new BadRequestException('Invalid OTP')
+    }
 
     const hash = await bcrypt.hash(newPassword, 10)
 
@@ -185,286 +219,211 @@ async registerOAuth(email: string) {
       .update({ password_hash: hash, otp: null })
       .eq('email', email)
 
-    return { message: 'Password reset successfully' ,success:true}
+    console.log(`[INFO: AUTH SERVICE] Password reset successful for ${email}`)
+    return { message: 'Password reset successfully', success: true }
   }
 
   async findOrCreateGoogleUser(profile: any) {
+    console.log(`[INFO: AUTH SERVICE] Finding or creating Google user: ${profile.emails[0].value}`)
     const { data: existing, error: findError } = await this.supabase.getClient()
       .from('users')
       .select('*')
       .eq('email', profile.emails[0].value)
       .maybeSingle()
 
-    if (findError) throw new Error(findError.message)
-    if (existing) return existing
+    if (findError) {
+      console.error(`[INFO: AUTH SERVICE] Google user lookup error: ${findError.message}`)
+      throw new Error(findError.message)
+    }
+    if (existing) {
+      console.log(`[INFO: AUTH SERVICE] Google user exists: ${profile.emails[0].value}`)
+      return { ...existing, success: true, message: 'User found' }
+    }
 
     const { data, error } = await this.supabase.getClient()
       .from('users')
-      .insert([{
-        email: profile.emails[0].value,
-        password_hash: '',
-        role: 'patient',
-        is_verified: true
-      }])
+      .insert([{ email: profile.emails[0].value, password_hash: '', role: 'patient', is_verified: true }])
       .select()
       .single()
 
-    if (error) throw new Error(error.message)
-    return data
+    if (error) {
+      console.error(`[INFO: AUTH SERVICE] Failed to create Google user: ${error.message}`)
+      throw new Error(error.message)
+    }
+
+    console.log(`[INFO: AUTH SERVICE] Google user created: ${profile.emails[0].value}`)
+    return { ...data, success: true, message: 'User created successfully' }
   }
 
+  async getUserByRoleAndId(role: string, id: string) {
+    console.log(`[INFO: AUTH SERVICE] Getting user by role: ${role}, id: ${id}`)
+    const { data: user, error: userError } = await this.supabase.getClient()
+      .from('users')
+      .select('id, email, role')
+      .eq('id', id)
+      .single()
 
-async getUserByRoleAndId(role: string, id: string) {
-  const { data: user, error: userError } = await this.supabase.getClient()
-    .from('users')
-    .select('id, email, role')
-    .eq('id', id)
-    .single()
+    if (userError || !user) {
+      console.error(`[INFO: AUTH SERVICE] User not found: ${id}`)
+      throw new UnauthorizedException('User not found')
+    }
 
-  if (userError || !user) {
-    throw new UnauthorizedException('User not found')
+    let profile: Record<string, any> = {}
+
+    switch (role) {
+      case 'lab-technician':
+        const { data: lab } = await this.supabase.getClient().from('lab_technician_profiles').select('*').eq('id', id).single()
+        if (lab) profile = lab
+        break
+      case 'doctor':
+        const { data: doc } = await this.supabase.getClient().from('doctor_profiles').select('*').eq('id', id).single()
+        if (doc) profile = doc
+        break
+      case 'patient':
+        const { data: pat } = await this.supabase.getClient().from('patient_profiles').select('*').eq('id', id).single()
+        if (pat) profile = pat
+        break
+      case 'nutritionist':
+        const { data: nut } = await this.supabase.getClient().from('nutritionist_profiles').select('*').eq('id', id).single()
+        if (nut) profile = nut
+        break
+      case 'admin':
+        profile = { admin: true }
+        break
+      default:
+        console.error(`[INFO: AUTH SERVICE] Invalid role: ${role}`)
+        throw new BadRequestException('Invalid role')
+    }
+
+    const merged: Record<string, any> = { ...user, ...profile }
+    Object.keys(merged).forEach((key) => {
+      if (merged[key] === null || merged[key] === undefined) merged[key] = ''
+    })
+    if (!merged.name || merged.name === '') merged.name = merged.email || 'user'
+
+    console.log(`[INFO: AUTH SERVICE] User profile fetched successfully for id: ${id}`)
+    return { ...merged, success: true, message: 'User profile fetched successfully' }
   }
 
-  let profile: Record<string, any> = {}
+  async upsertUserProfileByRole(role: string, profileData: Record<string, any>) {
+    console.log(`[INFO: AUTH SERVICE] Upserting profile for role: ${role}`)
+    const client = this.supabase.getClient()
+    let profile: Record<string, any> = {}
 
-  switch (role) {
-    case 'lab-technician': {
-      const { data } = await this.supabase.getClient()
-        .from('lab_technician_profiles')
-        .select('*')
-        .eq('id', id)
-        .single()
-      if (data) profile = data
-      break
+    switch (role) {
+      case 'lab-technician':
+        const { data: lab, error: labErr } = await client
+          .from('lab_technician_profiles')
+          .upsert(this.toDbProfile(profileData), { onConflict: 'id' })
+          .select('*')
+          .single()
+        if (labErr) {
+          console.error(`[INFO: AUTH SERVICE] Upsert failed for lab-technician: ${labErr.message}`)
+          throw new BadRequestException(labErr.message)
+        }
+        profile = lab
+        break
+      case 'doctor':
+        const { data: doc, error: docErr } = await client
+          .from('doctor_profiles')
+          .upsert(profileData, { onConflict: 'id' })
+          .select('*')
+          .single()
+        if (docErr) {
+          console.error(`[INFO: AUTH SERVICE] Upsert failed for doctor: ${docErr.message}`)
+          throw new BadRequestException(docErr.message)
+        }
+        profile = doc
+        break
+      case 'patient':
+        const { data: pat, error: patErr } = await client
+          .from('patient_profiles')
+          .upsert(profileData, { onConflict: 'id' })
+          .select('*')
+          .single()
+        if (patErr) {
+          console.error(`[INFO: AUTH SERVICE] Upsert failed for patient: ${patErr.message}`)
+          throw new BadRequestException(patErr.message)
+        }
+        profile = pat
+        break
+      case 'nutritionist':
+        const { data: nut, error: nutErr } = await client
+          .from('nutritionist_profiles')
+          .upsert(profileData, { onConflict: 'id' })
+          .select('*')
+          .single()
+        if (nutErr) {
+          console.error(`[INFO: AUTH SERVICE] Upsert failed for nutritionist: ${nutErr.message}`)
+          throw new BadRequestException(nutErr.message)
+        }
+        profile = nut
+        break
+      default:
+        console.error(`[INFO: AUTH SERVICE] Invalid role for upsert: ${role}`)
+        throw new BadRequestException('Invalid role')
     }
-    case 'doctor': {
-      const { data } = await this.supabase.getClient()
-        .from('doctor_profiles')
-        .select('*')
-        .eq('id', id)
-        .single()
-      if (data) profile = data
-      break
-    }
-    case 'patient': {
-      const { data } = await this.supabase.getClient()
-        .from('patient_profiles')
-        .select('*')
-        .eq('id', id)
-        .single()
-      if (data) profile = data
-      break
-    }
-    case 'nutritionist': {
-      const { data } = await this.supabase.getClient()
-        .from('nutritionist_profiles')
-        .select('*')
-        .eq('id', id)
-        .single()
-      if (data) profile = data
-      break
-    }
-    case 'admin': {
-      profile = { admin: true }
-      break
-    }
-    default:
-      throw new BadRequestException('Invalid role')
+
+    console.log(`[INFO: AUTH SERVICE] Profile upserted successfully for role: ${role}`)
+    return { ...profile, success: true, message: 'Profile upserted successfully' }
   }
 
-  // force result into a flexible object
-  const merged: Record<string, any> = { ...user, ...profile }
+  toDbProfile(profileData: Record<string, any>) {
+    const { dateOfBirth, email, role, success, ...rest } = profileData
+    return { ...rest, dateofbirth: dateOfBirth }
+  }
 
-  // normalize null/undefined → ''
-  Object.keys(merged).forEach((key) => {
-    if (merged[key] === null || merged[key] === undefined) {
-      merged[key] = ''
+  async upsertUserProfilePhoto(role: string, userId: string, fileBuffer: any) {
+    console.log(`[INFO: AUTH SERVICE] Uploading profile photo for user ${userId}, role: ${role}`)
+    const client = this.supabase.getClient()
+    let error
+
+    if (fileBuffer && fileBuffer.type === 'Buffer') fileBuffer = Buffer.from(fileBuffer.data)
+
+    const uploadResult = await new Promise<any>((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        { folder: `user_profiles/${role}` },
+        (error, result) => {
+          if (error) reject(error)
+          else resolve(result)
+        }
+      )
+      const readable = new Readable()
+      readable.push(fileBuffer)
+      readable.push(null)
+      readable.pipe(uploadStream)
+    }).catch(err => {
+      console.error(`[INFO: AUTH SERVICE] Cloudinary upload error: ${err.message}`)
+      throw new BadRequestException('Failed to upload image')
+    })
+
+    const imgUrl = uploadResult.secure_url
+    console.log(`[INFO: AUTH SERVICE] Uploaded image URL: ${imgUrl}`)
+
+    switch (role) {
+      case 'lab-technician':
+        ({ error } = await client.from('lab_technician_profiles').upsert({ id: userId, img: imgUrl, name: '' }, { onConflict: 'id' }).select('*').single())
+        break
+      case 'doctor':
+        ({ error } = await client.from('doctor_profiles').upsert({ id: userId, img: imgUrl, name: '' }, { onConflict: 'id' }).select('*').single())
+        break
+      case 'patient':
+        ({ error } = await client.from('patient_profiles').upsert({ id: userId, img: imgUrl, name: '' }, { onConflict: 'id' }).select('*').single())
+        break
+      case 'nutritionist':
+        ({ error } = await client.from('nutritionist_profiles').upsert({ id: userId, img: imgUrl, name: '' }, { onConflict: 'id' }).select('*').single())
+        break
+      default:
+        console.error(`[INFO: AUTH SERVICE] Invalid role: ${role}`)
+        throw new BadRequestException('Invalid role')
     }
-  })
 
-  // guarantee `name`
-  if (!merged.name || merged.name === '') {
-    merged.name = merged.email || 'user'
-  }
-
-  return { ...merged, success: true }
-}
-
-
-async upsertUserProfileByRole(role: string, profileData: Record<string, any>) {
-  const client = this.supabase.getClient()
-  let profile: Record<string, any> = {}
-
-  console.log('Upsert role:', role)
-  console.log('Incoming profileData:', profileData)
-
-
-  switch (role) {
-    case 'lab-technician': {
-      const { data, error } = await client
-        .from('lab_technician_profiles')
-        .upsert(this.toDbProfile(profileData), { onConflict: 'id' })
-        .select('*')
-        .single()
-      if (error) {
-        console.error('Supabase error (lab-technician):', error)
-        throw new BadRequestException(error.message || 'Failed to upsert lab technician profile')
-      }
-      profile = data
-      break
+    if (error) {
+      console.error(`[INFO: AUTH SERVICE] Supabase upsert error for photo: ${error.message}`)
+      throw new BadRequestException('Failed to update profile image')
     }
-    case 'doctor': {
-      const { data, error } = await client
-        .from('doctor_profiles')
-        .upsert(profileData, { onConflict: 'id' })
-        .select('*')
-        .single()
-      if (error) {
-        console.error('Supabase error (doctor):', error)
-        throw new BadRequestException(error.message || 'Failed to upsert doctor profile')
-      }
-      profile = data
-      break
-    }
-    case 'patient': {
-      const { data, error } = await client
-        .from('patient_profiles')
-        .upsert(profileData, { onConflict: 'id' })
-        .select('*')
-        .single()
-      if (error) {
-        console.error('Supabase error (patient):', error)
-        throw new BadRequestException(error.message || 'Failed to upsert patient profile')
-      }
-      profile = data
-      break
-    }
-    case 'nutritionist': {
-      const { data, error } = await client
-        .from('nutritionist_profiles')
-        .upsert(profileData, { onConflict: 'id' })
-        .select('*')
-        .single()
-      if (error) {
-        console.error('Supabase error (nutritionist):', error)
-        throw new BadRequestException(error.message || 'Failed to upsert nutritionist profile')
-      }
-      profile = data
-      break
-    }
-    default:
-      console.error('Invalid role received:', role)
-      throw new BadRequestException('Invalid role')
+
+    console.log(`[INFO: AUTH SERVICE] Profile photo updated successfully for user ${userId}`)
+    return { img: imgUrl, success: true, message: 'Profile photo updated successfully' }
   }
-
-  console.log('Upsert result:', profile)
-  return { ...profile, success: true }
-}
-
-
-toDbProfile(profileData: Record<string, any>) {
-  const { dateOfBirth, email,role,success,...rest } = profileData
-  return {
-    ...rest,
-    dateofbirth: dateOfBirth,
-  }
-}
-
-
-
-
-async upsertUserProfilePhoto(role: string, userId: string, fileBuffer: any) {
-  const client = this.supabase.getClient();
-  let error;
-
-  console.log('Uploading photo for role:', role);
-
-  // 🔑 Rebuild real Buffer if microservice transport converted it
-  if (fileBuffer && fileBuffer.type === 'Buffer') {
-    fileBuffer = Buffer.from(fileBuffer.data);
-  }
-
-  // Upload to Cloudinary
-  const uploadResult = await new Promise<any>((resolve, reject) => {
-    const uploadStream = cloudinary.uploader.upload_stream(
-      { folder: `user_profiles/${role}` },
-      (error, result) => {
-        if (error) reject(error);
-        else resolve(result);
-      }
-    );
-
-    const readable = new Readable();
-    readable.push(fileBuffer);
-    readable.push(null);
-    readable.pipe(uploadStream);
-  }).catch(err => {
-    console.error('Cloudinary upload error:', err);
-    throw new BadRequestException('Failed to upload image');
-  });
-
-  const imgUrl = uploadResult.secure_url;
-  console.log('Uploaded image URL:', imgUrl);
-
-  // 🔄 Upsert with placeholders for NOT NULL columns
-  switch (role) {
-    case 'lab-technician':
-      ({ error } = await client
-        .from('lab_technician_profiles')
-        .upsert(
-          { id: userId, img: imgUrl, name: '' }, // 👈 fallback for NOT NULL "name"
-          { onConflict: 'id' }
-        )
-        .select('*')
-        .single());
-      break;
-
-    case 'doctor':
-      ({ error } = await client
-        .from('doctor_profiles')
-        .upsert(
-          { id: userId, img: imgUrl, name: '' }, 
-          { onConflict: 'id' }
-        )
-        .select('*')
-        .single());
-      break;
-
-    case 'patient':
-      ({ error } = await client
-        .from('patient_profiles')
-        .upsert(
-          { id: userId, img: imgUrl, name: '' }, 
-          { onConflict: 'id' }
-        )
-        .select('*')
-        .single());
-      break;
-
-    case 'nutritionist':
-      ({ error } = await client
-        .from('nutritionist_profiles')
-        .upsert(
-          { id: userId, img: imgUrl, name: '' }, 
-          { onConflict: 'id' }
-        )
-        .select('*')
-        .single());
-      break;
-
-    default:
-      console.error('Invalid role:', role);
-      throw new BadRequestException('Invalid role');
-  }
-
-  if (error) {
-    console.error('Supabase upsert error:', error);
-    throw new BadRequestException('Failed to update profile image');
-  }
-
-  return { img: imgUrl, success: true };
-}
-
-
-
 }
