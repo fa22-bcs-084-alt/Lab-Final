@@ -1,0 +1,57 @@
+import { Body, Controller, Delete, Get, Inject, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common'
+import { ClientProxy } from '@nestjs/microservices'
+import { CreateAppointmentDto } from './dto/create-appointment.dto'
+import { UpdateAppointmentDto } from './dto/update-appointment.dto'
+import { AppointmentMode, AppointmentStatus, AppointmentTypes } from './appointment.enums'
+
+@Controller('appointments')
+export class AppointmentsGatewayController {
+  constructor(
+    @Inject('APPOINTMENTS_SERVICE') private readonly client: ClientProxy,
+  ) {}
+
+  @Post()
+  create(@Body() dto: CreateAppointmentDto) {
+    return this.client.send({ cmd: 'create_appointment' }, dto)
+  }
+
+  @Get()
+  findAll(
+    @Query('patientId') patientId?: string,
+    @Query('doctorId') doctorId?: string,
+    @Query('status') status?: AppointmentStatus,
+    @Query('type') type?: AppointmentTypes,
+    @Query('mode') mode?: AppointmentMode,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    return this.client.send({ cmd: 'find_all_appointments' }, {
+      patientId,
+      doctorId,
+      status,
+      type,
+      mode,
+      from,
+      to,
+      limit: limit ? parseInt(limit, 10) : undefined,
+      offset: offset ? parseInt(offset, 10) : undefined,
+    })
+  }
+
+  @Get(':id')
+  findOne(@Param('id', new ParseUUIDPipe()) id: string) {
+    return this.client.send({ cmd: 'find_one_appointment' }, id)
+  }
+
+  @Patch(':id')
+  update(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: UpdateAppointmentDto) {
+    return this.client.send({ cmd: 'update_appointment' }, { id, dto })
+  }
+
+  @Delete(':id')
+  remove(@Param('id', new ParseUUIDPipe()) id: string) {
+    return this.client.send({ cmd: 'remove_appointment' }, id)
+  }
+}

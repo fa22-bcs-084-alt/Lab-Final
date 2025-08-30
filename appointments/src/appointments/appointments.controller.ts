@@ -1,95 +1,46 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common'
+import { Controller } from '@nestjs/common'
+import { MessagePattern, Payload } from '@nestjs/microservices'
 import { AppointmentsService } from './appointments.service'
 import { CreateAppointmentDto } from './dto/create-appointment.dto'
 import { UpdateAppointmentDto } from './dto/update-appointment.dto'
 import { AppointmentMode, AppointmentStatus, AppointmentTypes } from './appointment.enums'
 
-@Controller('appointments')
-export class AppointmentsController {
+@Controller()
+export class AppointmentsMicroserviceController {
   constructor(private readonly svc: AppointmentsService) {}
 
-  @Post()
-  create(@Body() dto: CreateAppointmentDto) {
+  @MessagePattern({ cmd: 'create_appointment' })
+  create(@Payload() dto: CreateAppointmentDto) {
     return this.svc.create(dto)
   }
 
-  @Get()
-  findAll(
-    @Query('patientId') patientId?: string,
-    @Query('doctorId') doctorId?: string,
-    @Query('status') status?: AppointmentStatus,
-    @Query('type') type?: AppointmentTypes,
-    @Query('mode') mode?: AppointmentMode,
-    @Query('from') from?: string,
-    @Query('to') to?: string,
-    @Query('limit') limit?: string,
-    @Query('offset') offset?: string,
-  ) {
-    return this.svc.findAll({
-      patientId,
-      doctorId,
-      status,
-      type,
-      mode,
-      from,
-      to,
-      limit: limit ? parseInt(limit, 10) : undefined,
-      offset: offset ? parseInt(offset, 10) : undefined,
-    })
+  @MessagePattern({ cmd: 'find_all_appointments' })
+  findAll(@Payload() query: {
+    patientId?: string
+    doctorId?: string
+    status?: AppointmentStatus
+    type?: AppointmentTypes
+    mode?: AppointmentMode
+    from?: string
+    to?: string
+    limit?: number
+    offset?: number
+  }) {
+    return this.svc.findAll(query)
   }
 
-  @Get(':id')
-  findOne(@Param('id', new ParseUUIDPipe()) id: string) {
+  @MessagePattern({ cmd: 'find_one_appointment' })
+  findOne(@Payload() id: string) {
     return this.svc.findOne(id)
   }
 
-  @Patch(':id')
-  update(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: UpdateAppointmentDto) {
-    return this.svc.update(id, dto)
+  @MessagePattern({ cmd: 'update_appointment' })
+  update(@Payload() payload: { id: string; dto: UpdateAppointmentDto }) {
+    return this.svc.update(payload.id, payload.dto)
   }
 
-  @Delete(':id')
-  remove(@Param('id', new ParseUUIDPipe()) id: string) {
+  @MessagePattern({ cmd: 'remove_appointment' })
+  remove(@Payload() id: string) {
     return this.svc.remove(id)
   }
-
-  @Get('doctor/:doctorId')
-findAllByDoctor(
-  @Param('doctorId', new ParseUUIDPipe()) doctorId: string,
-  @Query('status') status?: AppointmentStatus,
-  @Query('from') from?: string,
-  @Query('to') to?: string,
-  @Query('limit') limit?: string,
-  @Query('offset') offset?: string,
-) {
-  return this.svc.findAll({
-    doctorId,
-    status,
-    from,
-    to,
-    limit: limit ? parseInt(limit, 10) : undefined,
-    offset: offset ? parseInt(offset, 10) : undefined,
-  })
-}
-
-@Get('patient/:patientId')
-findAllByPatient(
-  @Param('patientId', new ParseUUIDPipe()) patientId: string,
-  @Query('status') status?: AppointmentStatus,
-  @Query('from') from?: string,
-  @Query('to') to?: string,
-  @Query('limit') limit?: string,
-  @Query('offset') offset?: string,
-) {
-  return this.svc.findAll({
-    patientId,
-    status,
-    from,
-    to,
-    limit: limit ? parseInt(limit, 10) : undefined,
-    offset: offset ? parseInt(offset, 10) : undefined,
-  })
-}
-
-
 }

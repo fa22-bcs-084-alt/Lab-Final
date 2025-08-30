@@ -92,6 +92,7 @@ export class AppointmentsService {
     limit?: number
     offset?: number
   }): Promise<{ items: ApiRow[]; count: number }> {
+    console.log(query)
     let q = this.supabase.from('appointments').select('*', { count: 'exact' })
 
     if (query.patientId) q = q.eq('patient_id', query.patientId)
