@@ -7,6 +7,7 @@ import { AppointmentMode, AppointmentStatus, AppointmentTypes } from './appointm
 import { InjectModel } from '@nestjs/mongoose'
 import { Profile, ProfileDocument } from './schema/patient.profile.schema'
 import { Model } from 'mongoose'
+import { CompleteNutritionistAppointmentDto } from './dto/complete-nutritionist-appointment.dto'
 
 type DbRow = {
   id: string
@@ -159,4 +160,71 @@ async findAll(query: {
     if (error) throw new BadRequestException(error.message)
     return { id, deleted: true }
   }
+
+
+
+  async completeNutritionistAppointment(
+  id: string,
+  dto: CompleteNutritionistAppointmentDto,
+  nutritionistId: string
+): Promise<ApiRow> {
+  // fetch appointment
+  const { data: appointment, error } = await this.supabase
+    .from('appointments')
+    .select('*')
+    .eq('id', id)
+    .single()
+
+  if (error?.message?.includes('No rows')) throw new NotFoundException('appointment not found')
+  if (error) throw new BadRequestException(error.message)
+
+  const appt = appointment as DbRow
+
+if (dto.referredTestIds && dto.referredTestIds.length > 0) {
+  const inserts = dto.referredTestIds.map(testId => ({
+    test_id: testId,
+    patient_id: appt.patient_id,
+    referrer_id: nutritionistId,
+  }))
+
+  const { error: testErr } = await this.supabase.from('referred_tests').insert(inserts)
+  if (testErr) throw new BadRequestException(testErr.message)
+}
+
+  // create diet plan if provided
+  if (dto.dietPlan) {
+    const { error: dietErr } = await this.supabase.from('diet_plan').insert({
+      patient_id: appt.patient_id,
+      nutritionist_id: nutritionistId,
+      daily_calories: dto.dietPlan.dailyCalories,
+      protein: dto.dietPlan.protein,
+      carbs: dto.dietPlan.carbs,
+      fat: dto.dietPlan.fat,
+      deficiency: dto.dietPlan.deficiency,
+      notes: dto.dietPlan.notes ?? null,
+      calories_burned: dto.dietPlan.caloriesBurned,
+      exercise: dto.dietPlan.exercise,
+      start_date: dto.dietPlan.startDate ?? null,
+      end_date: dto.dietPlan.endDate ?? null,
+    })
+    if (dietErr) throw new BadRequestException(dietErr.message)
+  }
+
+  // update appointment with report + mark as completed
+  const { data: updated, error: updateErr } = await this.supabase
+    .from('appointments')
+    .update({
+      status: 'completed',
+      report: dto.report ?? appt.report,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (updateErr) throw new BadRequestException(updateErr.message)
+
+  return this.toApi(updated as DbRow)
+}
+
 }

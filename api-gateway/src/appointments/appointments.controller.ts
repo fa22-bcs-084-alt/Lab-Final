@@ -3,6 +3,7 @@ import { ClientProxy } from '@nestjs/microservices'
 import { CreateAppointmentDto } from './dto/create-appointment.dto'
 import { UpdateAppointmentDto } from './dto/update-appointment.dto'
 import { AppointmentMode, AppointmentStatus, AppointmentTypes } from './appointment.enums'
+import { CompleteNutritionistAppointmentDto } from './dto/complete-nutritionist-appointment.dto'
 
 @Controller('appointments')
 export class AppointmentsController {
@@ -53,5 +54,14 @@ export class AppointmentsController {
   @Delete(':id')
   remove(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.client.send({ cmd: 'remove_appointment' }, id)
+  }
+
+  
+  @Post(':id/complete')
+  completeAppointment(
+    @Param('id') id: string,
+    @Body() body: { dto: CompleteNutritionistAppointmentDto; nutritionistId: string },
+  ) {
+    return this.client.send({ cmd: 'complete_nutritionist_appointment' }, { id, ...body })
   }
 }
