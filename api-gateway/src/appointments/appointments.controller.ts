@@ -5,7 +5,7 @@ import { UpdateAppointmentDto } from './dto/update-appointment.dto'
 import { AppointmentMode, AppointmentStatus, AppointmentTypes } from './appointment.enums'
 
 @Controller('appointments')
-export class AppointmentsGatewayController {
+export class AppointmentsController {
   constructor(
     @Inject('APPOINTMENTS_SERVICE') private readonly client: ClientProxy,
   ) {}

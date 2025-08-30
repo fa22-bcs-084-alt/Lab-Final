@@ -108,6 +108,7 @@ export class AppointmentsService {
     q = q.order('date', { ascending: true }).order('time', { ascending: true }).range(offset, offset + limit - 1)
 
     const { data, error, count } = await q
+    console.log(data)
     if (error) throw new BadRequestException(error.message)
     return { items: (data as DbRow[]).map(this.toApi.bind(this)), count: count ?? 0 }
   }

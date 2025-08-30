@@ -6,7 +6,7 @@ import { UpdateAppointmentDto } from './dto/update-appointment.dto'
 import { AppointmentMode, AppointmentStatus, AppointmentTypes } from './appointment.enums'
 
 @Controller()
-export class AppointmentsMicroserviceController {
+export class AppointmentsController {
   constructor(private readonly svc: AppointmentsService) {}
 
   @MessagePattern({ cmd: 'create_appointment' })
