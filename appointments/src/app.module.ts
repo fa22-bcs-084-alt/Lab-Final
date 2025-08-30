@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config'
 import { SupabaseModule } from './supabase/supabase.module'
 import { AppointmentsModule } from './appointments/appointments.module'
 import { MongooseModule } from '@nestjs/mongoose'
+import { AnalyticsModule } from './analytics/analytics.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { MongooseModule } from '@nestjs/mongoose'
     }),
     SupabaseModule,
     AppointmentsModule,
+    AnalyticsModule,
   ],
 })
 export class AppModule {}
