@@ -7,12 +7,15 @@ import { SupabaseModule } from '../supabase/supabase.module'
 import { ConfigModule, ConfigService } from '@nestjs/config'
 import { GoogleStrategy } from './google.strategy'
 import { MailerService } from 'src/mailer-service/mailer-service.service'
+import { MongooseModule } from '@nestjs/mongoose'
+import { Profile,ProfileSchema } from 'src/schema/patient.profile.schema'
 
 
 @Module({
   imports: [
     SupabaseModule,
     PassportModule,
+    MongooseModule.forFeature([{ name: Profile.name, schema: ProfileSchema }]),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

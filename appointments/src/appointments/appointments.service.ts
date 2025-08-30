@@ -4,6 +4,9 @@ import { SUPABASE } from '../supabase/supabase.module'
 import { CreateAppointmentDto } from './dto/create-appointment.dto'
 import { UpdateAppointmentDto } from './dto/update-appointment.dto'
 import { AppointmentMode, AppointmentStatus, AppointmentTypes } from './appointment.enums'
+import { InjectModel } from '@nestjs/mongoose'
+import { Profile, ProfileDocument } from './schema/patient.profile.schema'
+import { Model } from 'mongoose'
 
 type DbRow = {
   id: string
@@ -39,7 +42,9 @@ type ApiRow = {
 
 @Injectable()
 export class AppointmentsService {
-  constructor(@Inject(SUPABASE) private readonly supabase: SupabaseClient) {}
+  constructor(@Inject(SUPABASE) private readonly supabase: SupabaseClient,
+ @InjectModel(Profile.name) private profileModel: Model<ProfileDocument>
+) {}
 
   private toApi(r: DbRow): ApiRow {
     return {
@@ -81,37 +86,58 @@ export class AppointmentsService {
     return this.toApi(data as DbRow)
   }
 
-  async findAll(query: {
-    patientId?: string
-    doctorId?: string
-    status?: AppointmentStatus
-    type?: AppointmentTypes
-    mode?: AppointmentMode
-    from?: string
-    to?: string
-    limit?: number
-    offset?: number
-  }): Promise<{ items: ApiRow[]; count: number }> {
-    console.log(query)
-    let q = this.supabase.from('appointments').select('*', { count: 'exact' })
+async findAll(query: {
+  patientId?: string
+  doctorId?: string
+  status?: AppointmentStatus
+  type?: AppointmentTypes
+  mode?: AppointmentMode
+  from?: string
+  to?: string
+  limit?: number
+  offset?: number
+}): Promise<{ items: []; count: number }> {
+  let q = this.supabase.from('appointments').select('*', { count: 'exact' })
 
-    if (query.patientId) q = q.eq('patient_id', query.patientId)
-    if (query.doctorId) q = q.eq('doctor_id', query.doctorId)
-    if (query.status) q = q.eq('status', query.status)
-    if (query.type) q = q.eq('type', query.type)
-    if (query.mode) q = q.eq('mode', query.mode)
-    if (query.from) q = q.gte('date', query.from)
-    if (query.to) q = q.lte('date', query.to)
+  if (query.patientId) q = q.eq('patient_id', query.patientId)
+  if (query.doctorId) q = q.eq('doctor_id', query.doctorId)
+  if (query.status) q = q.eq('status', query.status)
+  if (query.type) q = q.eq('type', query.type)
+  if (query.mode) q = q.eq('mode', query.mode)
+  if (query.from) q = q.gte('date', query.from)
+  if (query.to) q = q.lte('date', query.to)
 
-    const limit = query.limit ?? 20
-    const offset = query.offset ?? 0
-    q = q.order('date', { ascending: true }).order('time', { ascending: true }).range(offset, offset + limit - 1)
+  const limit = query.limit ?? 20
+  const offset = query.offset ?? 0
+  q = q.order('date', { ascending: true }).order('time', { ascending: true }).range(offset, offset + limit - 1)
 
-    const { data, error, count } = await q
-    console.log(data)
-    if (error) throw new BadRequestException(error.message)
-    return { items: (data as DbRow[]).map(this.toApi.bind(this)), count: count ?? 0 }
+  const { data, error, count } = await q
+  if (error) throw new BadRequestException(error.message)
+  if (!data) return { items: [], count: 0 }
+
+  const items:any = []
+  for (const row of data as DbRow[]) {
+    const patient = await this.profileModel.findOne({ id: row.patient_id }).lean()
+    if (!patient) continue
+
+    items.push({
+      id: row.id,
+      patient: patient as any, // ProfileType
+      doctor: { id: row.doctor_id } as any, // plug doctor lookup here if you want full profile
+      date: row.date,
+      time: row.time,
+      status: row.status as AppointmentStatus,
+      type: row.type as AppointmentTypes,
+      notes: row.notes ?? undefined,
+      report: row.report ?? undefined,
+      mode: row.mode as AppointmentMode,
+      dataShared: row.data_shared,
+    })
   }
+
+  return { items, count: count ?? 0 }
+}
+
 
   async findOne(id: string): Promise<ApiRow> {
     const { data, error } = await this.supabase.from('appointments').select('*').eq('id', id).single()

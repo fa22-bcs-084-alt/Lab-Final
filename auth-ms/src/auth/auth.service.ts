@@ -7,6 +7,9 @@ import { MailerService } from 'src/mailer-service/mailer-service.service'
 import { ConfigService } from '@nestjs/config'
 import { v2 as cloudinary } from 'cloudinary'
 import { Readable } from 'stream'
+import { InjectModel } from '@nestjs/mongoose'
+import { Profile, ProfileDocument } from 'src/schema/patient.profile.schema'
+import { Model } from 'mongoose'
 
 @Injectable()
 export class AuthService {
@@ -14,7 +17,8 @@ export class AuthService {
     private supabase: SupabaseService,
     private jwt: JwtService,
     private mailer: MailerService,
-    private configService: ConfigService
+    private configService: ConfigService,
+    @InjectModel(Profile.name) private profileModel: Model<ProfileDocument>,
   ) {
     cloudinary.config({
       cloud_name: this.configService.get<string>('CLOUDINARY_CLOUD_NAME'),
@@ -255,118 +259,146 @@ export class AuthService {
     return { ...data, success: true, message: 'User created successfully' }
   }
 
+
   async getUserByRoleAndId(role: string, id: string) {
-    console.log(`[INFO: AUTH SERVICE] Getting user by role: ${role}, id: ${id}`)
-    const { data: user, error: userError } = await this.supabase.getClient()
-      .from('users')
-      .select('id, email, role')
-      .eq('id', id)
-      .single()
+  console.log(`[INFO: AUTH SERVICE] Getting user by role: ${role}, id: ${id}`)
+  const { data: user, error: userError } = await this.supabase.getClient()
+    .from('users')
+    .select('id, email, role')
+    .eq('id', id)
+    .single()
 
-    if (userError || !user) {
-      console.error(`[INFO: AUTH SERVICE] User not found: ${id}`)
-      throw new UnauthorizedException('User not found')
-    }
-
-    let profile: Record<string, any> = {}
-
-    switch (role) {
-      case 'lab-technician':
-        const { data: lab } = await this.supabase.getClient().from('lab_technician_profiles').select('*').eq('id', id).single()
-        if (lab) profile = lab
-        break
-      case 'doctor':
-        const { data: doc } = await this.supabase.getClient().from('doctor_profiles').select('*').eq('id', id).single()
-        if (doc) profile = doc
-        break
-      case 'patient':
-        const { data: pat } = await this.supabase.getClient().from('patient_profiles').select('*').eq('id', id).single()
-        if (pat) profile = pat
-        break
-      case 'nutritionist':
-        const { data: nut } = await this.supabase.getClient().from('nutritionist_profiles').select('*').eq('id', id).single()
-        if (nut) profile = nut
-        break
-      case 'admin':
-        profile = { admin: true }
-        break
-      default:
-        console.error(`[INFO: AUTH SERVICE] Invalid role: ${role}`)
-        throw new BadRequestException('Invalid role')
-    }
-
-    const merged: Record<string, any> = { ...user, ...profile }
-    Object.keys(merged).forEach((key) => {
-      if (merged[key] === null || merged[key] === undefined) merged[key] = ''
-    })
-    if (!merged.name || merged.name === '') merged.name = merged.email || 'user'
-
-    console.log(`[INFO: AUTH SERVICE] User profile fetched successfully for id: ${id}`)
-    return { ...merged, success: true, message: 'User profile fetched successfully' }
+  if (userError || !user) {
+    console.error(`[INFO: AUTH SERVICE] User not found: ${id}`)
+    throw new UnauthorizedException('User not found')
   }
+
+  let profile: Record<string, any> = {}
+
+  switch (role) {
+    case 'lab-technician':
+      const { data: lab } = await this.supabase.getClient()
+        .from('lab_technician_profiles')
+        .select('*')
+        .eq('id', id)
+        .single()
+      if (lab) profile = lab
+      break
+
+    case 'doctor':
+      const { data: doc } = await this.supabase.getClient()
+        .from('doctor_profiles')
+        .select('*')
+        .eq('id', id)
+        .single()
+      if (doc) profile = doc
+      break
+
+    case 'patient':
+      // ✅ fetch patient profile from Mongo
+      const mongoProfile = await this.profileModel.findOne({ id }).lean().exec()
+      if (mongoProfile) profile = mongoProfile
+      break
+
+    case 'nutritionist':
+      const { data: nut } = await this.supabase.getClient()
+        .from('nutritionist_profiles')
+        .select('*')
+        .eq('id', id)
+        .single()
+      if (nut) profile = nut
+      break
+
+    case 'admin':
+      profile = { admin: true }
+      break
+
+    default:
+      console.error(`[INFO: AUTH SERVICE] Invalid role: ${role}`)
+      throw new BadRequestException('Invalid role')
+  }
+
+  const merged: Record<string, any> = { ...user, ...profile }
+  Object.keys(merged).forEach((key) => {
+    if (merged[key] === null || merged[key] === undefined) merged[key] = ''
+  })
+  if (!merged.name || merged.name === '') merged.name = merged.email || 'user'
+
+  console.log(`[INFO: AUTH SERVICE] User profile fetched successfully for id: ${id}`)
+  return { ...merged, success: true, message: 'User profile fetched successfully' }
+}
+
 
   async upsertUserProfileByRole(role: string, profileData: Record<string, any>) {
-    console.log(`[INFO: AUTH SERVICE] Upserting profile for role: ${role}`)
-    const client = this.supabase.getClient()
-    let profile: Record<string, any> = {}
+  console.log(`[INFO: AUTH SERVICE] Upserting profile for role: ${role}`)
+  const client = this.supabase.getClient()
+ let profile: Record<string, any> | null = null
 
-    switch (role) {
-      case 'lab-technician':
-        const { data: lab, error: labErr } = await client
-          .from('lab_technician_profiles')
-          .upsert(this.toDbProfile(profileData), { onConflict: 'id' })
-          .select('*')
-          .single()
-        if (labErr) {
-          console.error(`[INFO: AUTH SERVICE] Upsert failed for lab-technician: ${labErr.message}`)
-          throw new BadRequestException(labErr.message)
-        }
-        profile = lab
-        break
-      case 'doctor':
-        const { data: doc, error: docErr } = await client
-          .from('doctor_profiles')
-          .upsert(profileData, { onConflict: 'id' })
-          .select('*')
-          .single()
-        if (docErr) {
-          console.error(`[INFO: AUTH SERVICE] Upsert failed for doctor: ${docErr.message}`)
-          throw new BadRequestException(docErr.message)
-        }
-        profile = doc
-        break
-      case 'patient':
-        const { data: pat, error: patErr } = await client
-          .from('patient_profiles')
-          .upsert(profileData, { onConflict: 'id' })
-          .select('*')
-          .single()
-        if (patErr) {
-          console.error(`[INFO: AUTH SERVICE] Upsert failed for patient: ${patErr.message}`)
-          throw new BadRequestException(patErr.message)
-        }
-        profile = pat
-        break
-      case 'nutritionist':
-        const { data: nut, error: nutErr } = await client
-          .from('nutritionist_profiles')
-          .upsert(profileData, { onConflict: 'id' })
-          .select('*')
-          .single()
-        if (nutErr) {
-          console.error(`[INFO: AUTH SERVICE] Upsert failed for nutritionist: ${nutErr.message}`)
-          throw new BadRequestException(nutErr.message)
-        }
-        profile = nut
-        break
-      default:
-        console.error(`[INFO: AUTH SERVICE] Invalid role for upsert: ${role}`)
-        throw new BadRequestException('Invalid role')
-    }
 
-    console.log(`[INFO: AUTH SERVICE] Profile upserted successfully for role: ${role}`)
-    return { ...profile, success: true, message: 'Profile upserted successfully' }
+  switch (role) {
+    case 'lab-technician':
+      const { data: lab, error: labErr } = await client
+        .from('lab_technician_profiles')
+        .upsert(this.toDbProfile(profileData), { onConflict: 'id' })
+        .select('*')
+        .single()
+      if (labErr) {
+        console.error(`[INFO: AUTH SERVICE] Upsert failed for lab-technician: ${labErr.message}`)
+        throw new BadRequestException(labErr.message)
+      }
+      profile = lab
+      break
+
+    case 'doctor':
+      const { data: doc, error: docErr } = await client
+        .from('doctor_profiles')
+        .upsert(profileData, { onConflict: 'id' })
+        .select('*')
+        .single()
+      if (docErr) {
+        console.error(`[INFO: AUTH SERVICE] Upsert failed for doctor: ${docErr.message}`)
+        throw new BadRequestException(docErr.message)
+      }
+      profile = doc
+      break
+
+    case 'patient':
+      // ✅ Upsert into Mongo instead of Supabase
+      const existing = await this.profileModel.findOne({ id: profileData.id }).exec()
+      if (existing) {
+        profile = await this.profileModel.findOneAndUpdate(
+          { id: profileData.id },
+          { $set: profileData },
+          { new: true },
+        ).lean().exec()
+      } else {
+        const created = new this.profileModel(profileData)
+        profile = await created.save()
+      }
+      break
+
+    case 'nutritionist':
+      const { data: nut, error: nutErr } = await client
+        .from('nutritionist_profiles')
+        .upsert(profileData, { onConflict: 'id' })
+        .select('*')
+        .single()
+      if (nutErr) {
+        console.error(`[INFO: AUTH SERVICE] Upsert failed for nutritionist: ${nutErr.message}`)
+        throw new BadRequestException(nutErr.message)
+      }
+      profile = nut
+      break
+
+    default:
+      console.error(`[INFO: AUTH SERVICE] Invalid role for upsert: ${role}`)
+      throw new BadRequestException('Invalid role')
   }
+
+  console.log(`[INFO: AUTH SERVICE] Profile upserted successfully for role: ${role}`)
+  return { ...profile, success: true, message: 'Profile upserted successfully' }
+}
+
 
   toDbProfile(profileData: Record<string, any>) {
     const { dateOfBirth, email, role, success, ...rest } = profileData
