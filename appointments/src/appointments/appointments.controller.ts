@@ -55,4 +55,16 @@ export class AppointmentsController {
   ) {
     return this.svc.completeNutritionistAppointment(payload.id, payload.dto, payload.nutritionistId)
   }
+
+
+  @MessagePattern({ cmd: 'get_assigned_diet_plans' })
+getAssignedDietPlans(@Payload() nutritionistId: string) {
+  return this.svc.getAssignedDietPlans(nutritionistId)
+}
+
+@MessagePattern({ cmd: 'update_diet_plan' })
+updateDietPlan(@Payload() payload: { dietPlanId: string; nutritionistId: string; dto: any }) {
+  return this.svc.updateDietPlan(payload.dietPlanId, payload.dto)
+}
+
 }

@@ -64,4 +64,7 @@ export class AppointmentsController {
   ) {
     return this.client.send({ cmd: 'complete_nutritionist_appointment' }, { id, ...body })
   }
+
+
+  
 }

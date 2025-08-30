@@ -227,4 +227,116 @@ if (dto.referredTestIds && dto.referredTestIds.length > 0) {
   return this.toApi(updated as DbRow)
 }
 
+// Get all diet plans assigned by a nutritionist
+async getAssignedDietPlans(nutritionistId: string) {
+  const { data, error } = await this.supabase
+    .from('diet_plan')
+    .select('*')
+    .eq('nutritionist_id', nutritionistId)
+    .order('created_at', { ascending: false })
+
+  if (error) throw new BadRequestException(error.message)
+  if (!data) return []
+
+  const enrichedPlans:any = []
+
+  for (const plan of data) {
+    // lookup patient from MongoDB
+    const patient = await this.profileModel.findOne({ id: plan.patient_id }).lean()
+
+    enrichedPlans.push({
+      ...plan,
+      patientName: patient?.name || ""
+    })
+  }
+
+  return enrichedPlans
+}
+
+
+
+
+async updateDietPlan(
+  dietPlanId: string,
+  payload: Partial<{
+    dailyCalories: string
+    protein: string
+    carbs: string
+    fat: string
+    deficiency: string
+    notes: string
+    caloriesBurned: string
+    exercise: string
+    startDate: string
+    endDate: string
+    nutritionist_id: string
+  }>
+) {
+  console.log('--- updateDietPlan called ---')
+  console.log('dietPlanId:', dietPlanId)
+  console.log('payload:', payload)
+
+  // first check ownership
+  const { data: existing, error: fetchErr } = await this.supabase
+    .from('diet_plan')
+    .select('*')
+    .eq('id', dietPlanId)
+    .single()
+
+  console.log('existing diet plan:', existing)
+  console.log('fetchErr:', fetchErr)
+
+  if (fetchErr?.message?.includes('No rows')) {
+    console.error('Diet plan not found')
+    throw new NotFoundException('Diet plan not found')
+  }
+  if (fetchErr) {
+    console.error('Fetch error:', fetchErr)
+    throw new BadRequestException(fetchErr.message)
+  }
+  if (existing.nutritionist_id !== payload.nutritionist_id) {
+    console.error(
+      'Ownership mismatch:',
+      existing.nutritionist_id,
+      'vs',
+      payload.nutritionist_id,
+    )
+    throw new BadRequestException('You are not allowed to update this diet plan')
+  }
+
+  console.log('Updating diet plan...')
+  // update
+  const { data, error } = await this.supabase
+    .from('diet_plan')
+    .update({
+      ...payload,
+    })
+    .eq('id', dietPlanId)
+    .select()
+    .single()
+
+  console.log('update response data:', data)
+  console.log('update response error:', error)
+
+  if (error) {
+    console.error('Update failed:', error)
+    throw new BadRequestException(error.message)
+  }
+
+  // fetch patient profile from MongoDB
+  const patient = await this.profileModel.findOne({ id: data.patient_id }).lean()
+
+  const result = {
+    ...data,
+    patientName: patient?.name || ""
+  }
+
+  console.log('Diet plan updated successfully:', result)
+  return result
+}
+
+
+
+
+
 }
