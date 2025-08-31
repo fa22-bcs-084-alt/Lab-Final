@@ -9,13 +9,14 @@ import { GoogleStrategy } from './google.strategy'
 import { MailerService } from 'src/mailer-service/mailer-service.service'
 import { MongooseModule } from '@nestjs/mongoose'
 import { Profile,ProfileSchema } from 'src/schema/patient.profile.schema'
+import { NutritionistProfile, NutritionistProfileSchema } from 'src/schema/nutritionist-profile.schema'
 
 
 @Module({
   imports: [
     SupabaseModule,
     PassportModule,
-    MongooseModule.forFeature([{ name: Profile.name, schema: ProfileSchema }]),
+    MongooseModule.forFeature([{ name: Profile.name, schema: ProfileSchema },{ name: NutritionistProfile.name, schema: NutritionistProfileSchema }]),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

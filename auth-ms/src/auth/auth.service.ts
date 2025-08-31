@@ -10,6 +10,7 @@ import { Readable } from 'stream'
 import { InjectModel } from '@nestjs/mongoose'
 import { Profile, ProfileDocument } from 'src/schema/patient.profile.schema'
 import { Model } from 'mongoose'
+import { NutritionistProfile, NutritionistProfileDocument } from 'src/schema/nutritionist-profile.schema'
 
 @Injectable()
 export class AuthService {
@@ -19,6 +20,7 @@ export class AuthService {
     private mailer: MailerService,
     private configService: ConfigService,
     @InjectModel(Profile.name) private profileModel: Model<ProfileDocument>,
+    @InjectModel(NutritionistProfile.name) private nutModel:Model<NutritionistProfileDocument>,
   ) {
     cloudinary.config({
       cloud_name: this.configService.get<string>('CLOUDINARY_CLOUD_NAME'),
@@ -301,11 +303,7 @@ export class AuthService {
       break
 
     case 'nutritionist':
-      const { data: nut } = await this.supabase.getClient()
-        .from('nutritionist_profiles')
-        .select('*')
-        .eq('id', id)
-        .single()
+      const nut=await this.nutModel.findOne({id}).lean().exec()
       if (nut) profile = nut
       break
 
@@ -364,6 +362,7 @@ export class AuthService {
 
     case 'patient':
       // ✅ Upsert into Mongo instead of Supabase
+      console.log("Upserting Patient Data...")
       const existing = await this.profileModel.findOne({ id: profileData.id }).exec()
       if (existing) {
         profile = await this.profileModel.findOneAndUpdate(
@@ -378,17 +377,20 @@ export class AuthService {
       break
 
     case 'nutritionist':
-      const { data: nut, error: nutErr } = await client
-        .from('nutritionist_profiles')
-        .upsert(profileData, { onConflict: 'id' })
-        .select('*')
-        .single()
-      if (nutErr) {
-        console.error(`[INFO: AUTH SERVICE] Upsert failed for nutritionist: ${nutErr.message}`)
-        throw new BadRequestException(nutErr.message)
-      }
-      profile = nut
-      break
+         console.log("Upserting nutritionist Data...")
+  const existingNut = await this.nutModel.findOne({ id: profileData.id }).exec()
+  if (existingNut) {
+    profile = await this.nutModel.findOneAndUpdate(
+      { id: profileData.id },
+      { $set: profileData },
+      { new: true },
+    ).lean().exec()
+  } else {
+    const createdNut = new this.nutModel(profileData)
+    profile = await createdNut.save()
+  }
+  break
+
 
     default:
       console.error(`[INFO: AUTH SERVICE] Invalid role for upsert: ${role}`)
@@ -401,8 +403,8 @@ export class AuthService {
 
 
   toDbProfile(profileData: Record<string, any>) {
-    const { dateOfBirth, email, role, success, ...rest } = profileData
-    return { ...rest, dateofbirth: dateOfBirth }
+    const { dateofbirth, email, role, success,message, ...rest } = profileData
+    return { ...rest, dateofbirth: dateofbirth }
   }
 
   async upsertUserProfilePhoto(role: string, userId: string, fileBuffer: any) {
@@ -433,22 +435,56 @@ export class AuthService {
     console.log(`[INFO: AUTH SERVICE] Uploaded image URL: ${imgUrl}`)
 
     switch (role) {
-      case 'lab-technician':
-        ({ error } = await client.from('lab_technician_profiles').upsert({ id: userId, img: imgUrl, name: '' }, { onConflict: 'id' }).select('*').single())
-        break
-      case 'doctor':
-        ({ error } = await client.from('doctor_profiles').upsert({ id: userId, img: imgUrl, name: '' }, { onConflict: 'id' }).select('*').single())
-        break
-      case 'patient':
-        ({ error } = await client.from('patient_profiles').upsert({ id: userId, img: imgUrl, name: '' }, { onConflict: 'id' }).select('*').single())
-        break
-      case 'nutritionist':
-        ({ error } = await client.from('nutritionist_profiles').upsert({ id: userId, img: imgUrl, name: '' }, { onConflict: 'id' }).select('*').single())
-        break
-      default:
-        console.error(`[INFO: AUTH SERVICE] Invalid role: ${role}`)
-        throw new BadRequestException('Invalid role')
+  case 'lab-technician':
+    ({ error } = await client
+      .from('lab_technician_profiles')
+      .upsert(
+        { id: userId, img: imgUrl }, 
+        { onConflict: 'id' }
+      )
+      .select('*')
+      .single())
+    break
+  case 'doctor':
+    ({ error } = await client
+      .from('doctor_profiles')
+      .upsert(
+        { id: userId, img: imgUrl }, 
+        { onConflict: 'id' }
+      )
+      .select('*')
+      .single())
+    break
+  case 'patient':
+    ({ error } = await client
+      .from('patient_profiles')
+      .upsert(
+        { id: userId, img: imgUrl }, 
+        { onConflict: 'id' }
+      )
+      .select('*')
+      .single())
+    break
+    
+  case 'nutritionist':
+    const existingNut = await this.nutModel.findOne({ id: userId }).exec()
+    if (existingNut) {
+      await this.nutModel.findOneAndUpdate(
+        { id: userId },
+        { $set: { img: imgUrl } }, // only update img
+        { new: true },
+      ).lean().exec()
+    } else {
+      const createdNut = new this.nutModel({ id: userId, img: imgUrl })
+      await createdNut.save()
     }
+    break
+
+  default:
+    console.error(`[INFO: AUTH SERVICE] Invalid role: ${role}`)
+    throw new BadRequestException('Invalid role')
+}
+
 
     if (error) {
       console.error(`[INFO: AUTH SERVICE] Supabase upsert error for photo: ${error.message}`)
