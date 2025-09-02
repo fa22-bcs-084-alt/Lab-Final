@@ -22,17 +22,22 @@ export class LabTestsService {
       .select()
       .single()
 
+
+      
     if (error) throw error
     return data
   }
 
   async getAllTests() {
+    this.log("GET ALL LAB TEST CALLED")
     const { data, error } = await this.supabase
       .from('lab_tests')
       .select('*')
       .order('name', { ascending: true })
 
+
     if (error) throw error
+    this.log("TOTAL TEST FOUND= "+data.length)
     return data
   }
 
@@ -72,5 +77,10 @@ export class LabTestsService {
     if (error) throw error
     if (!data) throw new NotFoundException('Lab test not found')
     return { success: true, deletedId: id }
+  }
+
+
+  log(msg:string){
+    console.log(`[LAB TEST MS] ${msg}`)
   }
 }
