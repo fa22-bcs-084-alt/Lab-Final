@@ -81,9 +81,15 @@ export class AppointmentsService {
   }
 
   async create(dto: CreateAppointmentDto): Promise<ApiRow> {
+    this.logger("Appointment creation called for patient id="+dto.patientId)
     const payload = this.toDb(dto)
+    
     const { data, error } = await this.supabase.from('appointments').insert(payload).select().single()
-    if (error) throw new BadRequestException(error.message)
+    if (error) {
+      this.logger("APPOINTMENT CREATION ERROR OCCURED ERROR: "+error)
+      throw new BadRequestException(error.message)
+    }
+   this.logger("APPOINTMENT CREATED FOR PATIENT ID= "+payload.patient_id +" doctor id= "+payload.doctor_id +" at "+data.created_at)  
     return this.toApi(data as DbRow)
   }
 
@@ -98,6 +104,7 @@ async findAll(query: {
   limit?: number
   offset?: number
 }): Promise<{ items: []; count: number }> {
+  this.logger("APPOINTMENT QUERY CALLED, QUERY="+query)
   let q = this.supabase.from('appointments').select('*', { count: 'exact' })
 
   if (query.patientId) q = q.eq('patient_id', query.patientId)
@@ -136,28 +143,37 @@ async findAll(query: {
     })
   }
 
+  this.logger("Total APPOINTMENT ITEMS RETURNED ARE "+(count ?? 0))
   return { items, count: count ?? 0 }
 }
 
 
   async findOne(id: string): Promise<ApiRow> {
+    this.logger(" FINDING APPOINTMENT FOR ID="+id)
     const { data, error } = await this.supabase.from('appointments').select('*').eq('id', id).single()
     if (error?.message?.includes('No rows')) throw new NotFoundException('appointment not found')
     if (error) throw new BadRequestException(error.message)
+    this.logger(" APPOINTMENT FOR ID "+id+ " FOUND")  
     return this.toApi(data as DbRow)
   }
 
   async update(id: string, dto: UpdateAppointmentDto): Promise<ApiRow> {
+    this.logger(" APPOINTMENT UPDATE CALLED FOR APPOINTMENT ID="+id+" PAYLOAD= "+dto)
     const payload = this.toDb(dto)
+
     const { data, error } = await this.supabase.from('appointments').update(payload).eq('id', id).select().single()
     if (error?.message?.includes('No rows')) throw new NotFoundException('appointment not found')
     if (error) throw new BadRequestException(error.message)
+    this.logger(" ")  
+  this.logger(" APPOINTMENT UPDATED SUCCESSFULLY APPOINTMENT FOR= "+id)
     return this.toApi(data as DbRow)
   }
 
   async remove(id: string): Promise<{ id: string; deleted: boolean }> {
+    this.logger(" APPOINTMENT CANCEL CALLED FOR APPOINTMENT ID= "+id)
     const { error } = await this.supabase.from('appointments').delete().eq('id', id)
     if (error) throw new BadRequestException(error.message)
+      this.logger(" APPOINTMENT CANCEL SUCCESSFULLY FOR APPOINTMENT ID= "+id)
     return { id, deleted: true }
   }
 
@@ -168,12 +184,15 @@ async findAll(query: {
   dto: CompleteNutritionistAppointmentDto,
   nutritionistId: string
 ): Promise<ApiRow> {
+  this.logger(" COMPLETE NUTRITIONIST APPOINTMENT CALLED FOR NUTRITIONIST ID= "+nutritionistId)
   // fetch appointment
   const { data: appointment, error } = await this.supabase
     .from('appointments')
     .select('*')
     .eq('id', id)
     .single()
+
+   this.logger(" NUTRITIONIST APPOINTMENT FOUND FOR NUTRITIONIST ID= "+nutritionistId+ " APPOINTMENT ID"+appointment.id)
 
   if (error?.message?.includes('No rows')) throw new NotFoundException('appointment not found')
   if (error) throw new BadRequestException(error.message)
@@ -187,10 +206,12 @@ if (dto.referredTestIds && dto.referredTestIds.length > 0) {
     referrer_id: nutritionistId,
   }))
 
+   this.logger("NUTRITIONIST REFERRED TOTAL "+inserts.length+" TEST(s)")
   const { error: testErr } = await this.supabase.from('referred_tests').insert(inserts)
   if (testErr) throw new BadRequestException(testErr.message)
 }
 
+  this.logger("REFERRED ALL TEST(s) TO THE PATIENT")
   // create diet plan if provided
   if (dto.dietPlan) {
     const { error: dietErr } = await this.supabase.from('diet_plan').insert({
@@ -208,6 +229,8 @@ if (dto.referredTestIds && dto.referredTestIds.length > 0) {
       end_date: dto.dietPlan.endDate ?? null,
     })
     if (dietErr) throw new BadRequestException(dietErr.message)
+      
+    this.logger("DIET PLAN ASSIGNED TO THE PATIENT")
   }
 
   // update appointment with report + mark as completed
@@ -223,12 +246,15 @@ if (dto.referredTestIds && dto.referredTestIds.length > 0) {
     .single()
 
   if (updateErr) throw new BadRequestException(updateErr.message)
+    
+    this.logger("APPOINTMENT STATUS UPDATED FOR THE PATIENT")
 
   return this.toApi(updated as DbRow)
 }
 
 // Get all diet plans assigned by a nutritionist
 async getAssignedDietPlans(nutritionistId: string) {
+    this.logger("FETCHING DIET PLANS FOR NUTRITIONIST ID= "+nutritionistId)
   const { data, error } = await this.supabase
     .from('diet_plan')
     .select('*')
@@ -249,7 +275,7 @@ async getAssignedDietPlans(nutritionistId: string) {
       patientName: patient?.name || ""
     })
   }
-
+  this.logger("TOTAL "+enrichedPlans.length+ " DIET PLANS FOUND FOR NUTRITIONIST")
   return enrichedPlans
 }
 
@@ -272,9 +298,9 @@ async updateDietPlan(
     nutritionist_id: string
   }>
 ) {
-  console.log('--- updateDietPlan called ---')
-  console.log('dietPlanId:', dietPlanId)
-  console.log('payload:', payload)
+  this.logger('--- updateDietPlan called ---')
+  this.logger('dietPlanId:'+ dietPlanId)
+  this.logger('payload:'+ payload)
 
   // first check ownership
   const { data: existing, error: fetchErr } = await this.supabase
@@ -283,8 +309,8 @@ async updateDietPlan(
     .eq('id', dietPlanId)
     .single()
 
-  console.log('existing diet plan:', existing)
-  console.log('fetchErr:', fetchErr)
+  this.logger('existing diet plan:'+ existing)
+  this.logger('fetchErr:'+ fetchErr)
 
   if (fetchErr?.message?.includes('No rows')) {
     console.error('Diet plan not found')
@@ -304,7 +330,7 @@ async updateDietPlan(
     throw new BadRequestException('You are not allowed to update this diet plan')
   }
 
-  console.log('Updating diet plan...')
+  this.logger('Updating diet plan...')
   // update
   const { data, error } = await this.supabase
     .from('diet_plan')
@@ -315,8 +341,8 @@ async updateDietPlan(
     .select()
     .single()
 
-  console.log('update response data:', data)
-  console.log('update response error:', error)
+  this.logger('update response data:'+ data)
+  this.logger('update response error:'+ error)
 
   if (error) {
     console.error('Update failed:', error)
@@ -331,12 +357,16 @@ async updateDietPlan(
     patientName: patient?.name || ""
   }
 
-  console.log('Diet plan updated successfully:', result)
+  this.logger('Diet plan updated successfully:'+ result)
   return result
 }
 
 
 
 
+
+  logger(msg:string){
+   console.log("[INFO APPOINTMENT SERVICE] "+msg)
+  }
 
 }
