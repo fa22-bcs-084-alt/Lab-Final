@@ -15,12 +15,19 @@ export class MailerService {
     })
   }
 
-  async sendMail(to: string, subject: string, text: string) {
-    await this.transporter.sendMail({
-      from: process.env.SMTP_EMAIL,
-      to,
-      subject,
-      text,
-    })
-  }
+  async sendMail(
+  to: string,
+  subject: string,
+  text: string,
+  html?: string
+) {
+  await this.transporter.sendMail({
+    from: process.env.SMTP_EMAIL,
+    to,
+    subject,
+    text,
+    html, // optional
+  })
+}
+
 }

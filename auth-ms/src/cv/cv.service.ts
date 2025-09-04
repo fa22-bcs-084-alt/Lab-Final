@@ -5,12 +5,15 @@ import { UploadApiResponse, v2 as cloudinary } from 'cloudinary'
 import { Readable } from 'stream'
 import { CreateCvDto } from './dto/create-cv.dto'
 import { UpdateCvDto } from './dto/update-cv.dto'
+import { MailerService } from 'src/mailer-service/mailer-service.service'
 
 @Injectable()
 export class CvService {
   private readonly supabase: SupabaseClient
 
-  constructor(private configService: ConfigService) {
+  constructor(private configService: ConfigService,
+    private mailer: MailerService,
+  ) {
     this.supabase = createClient(
       this.configService.get<string>('SUPABASE_URL')!,
       this.configService.get<string>('SUPABASE_SERVICE_ROLE_KEY')!,
@@ -160,4 +163,48 @@ export class CvService {
     console.log('[CV MS] remove success for id:', id)
     return { message: 'CV deleted successfully' }
   }
+
+
+
+
+  private async sendEmail(email: string) {
+  try {
+    console.log(`[CV MS] Sending email to ${email}`)
+
+    const subject = 'CV Received - Thank You for Applying'
+    const textMessage = `Hello,
+
+We have received your CV. Our recruitment team will review your application. If your profile matches an available position, we will contact you.
+
+Thank you for your interest.
+
+Best regards,  
+HR Team`
+
+    const htmlMessage = `
+      <div style="font-family: Arial, sans-serif; line-height: 1.5; color: #333;">
+        <h2 style="color:#0a6cff;">CV Received</h2>
+        <p>Dear Candidate,</p>
+        <p>We have received your CV. Our recruitment team will carefully review your application. 
+        If your profile matches an available position, we will reach out to you.</p>
+        <p>Thank you for your interest in joining our team.</p>
+        <br>
+        <p style="font-size: 14px; color: #555;">Best regards,<br>HR Team</p>
+      </div>
+    `
+
+    await this.mailer.sendMail(
+      email,
+      subject,
+       textMessage,
+      htmlMessage,
+    )
+
+    console.log(`[CV MS] Email successfully sent to ${email}`)
+  } catch (err) {
+    console.error(`[CV MS] Failed to send email to ${email}:`, err)
+    throw err
+  }
+}
+
 }
