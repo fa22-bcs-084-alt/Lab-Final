@@ -4,6 +4,7 @@ import { AuthModule } from './auth/auth.module'
 import { SupabaseModule } from './supabase/supabase.module'
 import { MailerServiceModule } from './mailer-service/mailer-service.module';
 import { MongooseModule } from '@nestjs/mongoose';
+import { CvModule } from './cv/cv.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { MongooseModule } from '@nestjs/mongoose';
         uri: config.get<string>('MONGODB_URI'),
       }),
     }),
+     CvModule,
   ],
 })
 export class AppModule {}

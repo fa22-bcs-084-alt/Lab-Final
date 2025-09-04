@@ -9,9 +9,10 @@ import { FitnessModule } from './fitness/fitness.module';
 import { AppointmentsModule } from './appointments/appointments.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { DietPlanModule } from './diet-plan/diet-plan.module';
+import { CvModule } from './cv/cv.module';
 
 @Module({
-  imports: [AuthModule, BookingsModule, LabTestsModule, MedicalRecordsModule, FitnessModule, AppointmentsModule, AnalyticsModule, DietPlanModule],
+  imports: [AuthModule, BookingsModule, LabTestsModule, MedicalRecordsModule, FitnessModule, AppointmentsModule, AnalyticsModule, DietPlanModule, CvModule],
   controllers: [AppController],
   providers: [AppService],
 })

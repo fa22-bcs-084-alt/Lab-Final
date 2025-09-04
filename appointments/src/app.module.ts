@@ -5,6 +5,7 @@ import { AppointmentsModule } from './appointments/appointments.module'
 import { MongooseModule } from '@nestjs/mongoose'
 import { AnalyticsModule } from './analytics/analytics.module';
 
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
