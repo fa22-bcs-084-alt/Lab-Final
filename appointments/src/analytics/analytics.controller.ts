@@ -11,4 +11,15 @@ export class AnalyticsController {
   async getFitnessData(patientId: string) {
     return this.analyticsService.getPatientAnalytics(patientId)
   }
+
+
+  @MessagePattern({ cmd: "patients-monthly" })
+  getPatientsMonthly(data: { doctorId: string; months: number }) {
+    return this.analyticsService.getPatientsMonthly(data.months, data.doctorId)
+  }
+
+  @MessagePattern({ cmd: "appointments-weekly" })
+  getAppointmentsWeekly(data: { doctorId: string }) {
+    return this.analyticsService.getAppointmentsWeekly(data.doctorId)
+  }
 }
