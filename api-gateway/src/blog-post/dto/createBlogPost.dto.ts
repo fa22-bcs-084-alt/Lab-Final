@@ -10,6 +10,7 @@ export class CreateBlogPostDto {
   tags?: string[]
   image?: string
   featured?: boolean
+  doctorId?: string   // 🔥 new
 }
 
 // src/blogPost/dto/updateBlogPost.dto.ts
@@ -24,4 +25,5 @@ export class UpdateBlogPostDto {
   tags?: string[]
   image?: string
   featured?: boolean
+  doctorId?: string   // 🔥 new
 }

@@ -23,6 +23,11 @@ export class BlogPostController {
     return this.service.findOne(id)
   }
 
+   @MessagePattern({ cmd: 'findByDoctor' })
+  findByDoctor(@Payload() doctorId: string) {
+    return this.service.findByDoctor(doctorId)
+  }
+
   @MessagePattern({ cmd: 'updateBlogPost' })
   update(@Payload() data: { id: string; dto: UpdateBlogPostDto }) {
     return this.service.update(data.id, data.dto)
