@@ -5,6 +5,8 @@ import { SupabaseModule } from './supabase/supabase.module'
 import { MailerServiceModule } from './mailer-service/mailer-service.module';
 import { MongooseModule } from '@nestjs/mongoose';
 import { CvModule } from './cv/cv.module';
+import { BlogPostModule } from './blog-post/blog-post.module';
+import { BlogCategoryModule } from './blog-category/blog-category.module';
 
 @Module({
   imports: [
@@ -20,6 +22,8 @@ import { CvModule } from './cv/cv.module';
       }),
     }),
      CvModule,
+     BlogPostModule,
+     BlogCategoryModule,
   ],
 })
 export class AppModule {}

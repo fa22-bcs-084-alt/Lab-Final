@@ -10,9 +10,11 @@ import { AppointmentsModule } from './appointments/appointments.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { DietPlanModule } from './diet-plan/diet-plan.module';
 import { CvModule } from './cv/cv.module';
+import { BlogPostModule } from './blog-post/blog-post.module';
+import { BlogCategoryModule } from './blog-category/blog-category.module';
 
 @Module({
-  imports: [AuthModule, BookingsModule, LabTestsModule, MedicalRecordsModule, FitnessModule, AppointmentsModule, AnalyticsModule, DietPlanModule, CvModule],
+  imports: [AuthModule, BookingsModule, LabTestsModule, MedicalRecordsModule, FitnessModule, AppointmentsModule, AnalyticsModule, DietPlanModule, CvModule, BlogPostModule, BlogCategoryModule],
   controllers: [AppController],
   providers: [AppService],
 })
