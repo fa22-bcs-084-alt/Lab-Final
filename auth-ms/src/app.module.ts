@@ -7,6 +7,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { CvModule } from './cv/cv.module';
 import { BlogPostModule } from './blog-post/blog-post.module';
 import { BlogCategoryModule } from './blog-category/blog-category.module';
+import { NutritionistsModule } from './nutritionists/nutritionists.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { BlogCategoryModule } from './blog-category/blog-category.module';
      CvModule,
      BlogPostModule,
      BlogCategoryModule,
+     NutritionistsModule,
   ],
 })
 export class AppModule {}

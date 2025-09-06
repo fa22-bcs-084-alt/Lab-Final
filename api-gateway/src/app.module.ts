@@ -12,9 +12,10 @@ import { DietPlanModule } from './diet-plan/diet-plan.module';
 import { CvModule } from './cv/cv.module';
 import { BlogPostModule } from './blog-post/blog-post.module';
 import { BlogCategoryModule } from './blog-category/blog-category.module';
+import { NutritionistsModule } from './nutritionists/nutritionists.module';
 
 @Module({
-  imports: [AuthModule, BookingsModule, LabTestsModule, MedicalRecordsModule, FitnessModule, AppointmentsModule, AnalyticsModule, DietPlanModule, CvModule, BlogPostModule, BlogCategoryModule],
+  imports: [AuthModule, BookingsModule, LabTestsModule, MedicalRecordsModule, FitnessModule, AppointmentsModule, AnalyticsModule, DietPlanModule, CvModule, BlogPostModule, BlogCategoryModule, NutritionistsModule],
   controllers: [AppController],
   providers: [AppService],
 })
