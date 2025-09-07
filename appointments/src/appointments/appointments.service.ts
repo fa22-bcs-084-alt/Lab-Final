@@ -362,6 +362,41 @@ async updateDietPlan(
 }
 
 
+// inside AppointmentsService
+
+async getActiveDietPlansForPatient(patientId: string) {
+  this.logger("FETCHING ACTIVE DIET PLANS FOR PATIENT ID= " + patientId)
+
+  const today = new Date().toISOString().split("T")[0] // yyyy-mm-dd
+
+  const { data, error } = await this.supabase
+    .from("diet_plan")
+    .select("*")
+    .eq("patient_id", patientId)
+    .or(`start_date.is.null,and(start_date.lte.${today})`)
+    .or(`end_date.is.null,and(end_date.gte.${today})`)
+    .order("created_at", { ascending: false })
+
+  if (error) {
+    this.logger("ERROR FETCHING ACTIVE DIET PLANS " + error.message)
+    throw new BadRequestException(error.message)
+  }
+
+  if (!data) return []
+
+  const enrichedPlans: any[] = []
+  for (const plan of data) {
+    const nutritionist = await this.profileModel.findOne({ id: plan.nutritionist_id }).lean()
+    enrichedPlans.push({
+      ...plan,
+      nutritionistName: nutritionist?.name || "",
+    })
+  }
+
+  this.logger("TOTAL " + enrichedPlans.length + " ACTIVE DIET PLANS FOUND FOR PATIENT")
+  return enrichedPlans
+}
+
 
 
 

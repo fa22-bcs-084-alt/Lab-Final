@@ -7,6 +7,12 @@ import { ClientProxy } from "@nestjs/microservices"
 export class DietPlanController {
   constructor(@Inject('APPOINTMENTS_SERVICE') private readonly client: ClientProxy) {}
 
+
+    @Get('patient/:patientId')
+  async getActiveDietPlansForPatient(@Param('patientId') patientId: string) {
+    return this.client.send({ cmd: 'get_active_diet_plans_for_patient' }, patientId)
+  }
+
   @Get('assigned')
   getAssigned(@Query('nutritionistId') nutritionistId: string) {
     return this.client.send({ cmd: 'get_assigned_diet_plans' }, nutritionistId)

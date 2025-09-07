@@ -67,4 +67,11 @@ updateDietPlan(@Payload() payload: { dietPlanId: string; nutritionistId: string;
   return this.svc.updateDietPlan(payload.dietPlanId, payload.dto)
 }
 
+@MessagePattern({ cmd: 'get_active_diet_plans_for_patient' })
+getActiveDietPlansForPatient(@Payload() patientId: string) {
+  return this.svc.getActiveDietPlansForPatient(patientId)
+}
+
+
+
 }

@@ -6,7 +6,8 @@ import { ConfigService } from '@nestjs/config';
 @Injectable()
 export class FitnessService {
   private supabase: SupabaseClient;
-  private readonly logger = new Logger('FitnessService');
+
+
 
   constructor(private configService: ConfigService) {
     
@@ -16,8 +17,13 @@ export class FitnessService {
         );
   }
 
+
+  logger(msg:string){
+   console.log(msg) 
+  }
+  
   async upsertFitnessRecord(userId: string, updates: any) {
-    this.logger.log('[INFO FITNESS SERVICE] Processing daily fitness record');
+    this.logger('[INFO FITNESS SERVICE] Processing daily fitness record');
 
     // Define "today"
     const today = new Date();
@@ -36,7 +42,7 @@ export class FitnessService {
       .maybeSingle();
 
     if (fetchError) {
-      this.logger.error(
+      this.logger(
         `[INFO FITNESS SERVICE] Failed to check today's record: ${fetchError.message}`,
       );
       throw fetchError;
@@ -44,7 +50,7 @@ export class FitnessService {
 
     if (existing) {
       // Update today's record
-      this.logger.log('[INFO FITNESS SERVICE] Updating today\'s record');
+      this.logger('[INFO FITNESS SERVICE] Updating today\'s record');
       const { data, error } = await this.supabase
         .from('fitness')
         .update(updates)
@@ -53,17 +59,17 @@ export class FitnessService {
         .single();
 
       if (error) {
-        this.logger.error(
+        this.logger(
           `[INFO FITNESS SERVICE] Failed to update record: ${error.message}`,
         );
         throw error;
       }
 
-      this.logger.log('[INFO FITNESS SERVICE] Today\'s record updated successfully');
+      this.logger('[INFO FITNESS SERVICE] Today\'s record updated successfully');
       return data;
     } else {
       // Insert a new record for today
-      this.logger.log('[INFO FITNESS SERVICE] Adding new record for today');
+      this.logger('[INFO FITNESS SERVICE] Adding new record for today');
       const { data, error } = await this.supabase
         .from('fitness')
         .insert([{ patient_id: userId, ...updates }])
@@ -71,19 +77,19 @@ export class FitnessService {
         .single();
 
       if (error) {
-        this.logger.error(
+        this.logger(
           `[INFO FITNESS SERVICE] Failed to add record: ${error.message}`,
         );
         throw error;
       }
 
-      this.logger.log('[INFO FITNESS SERVICE] New record created successfully');
+      this.logger('[INFO FITNESS SERVICE] New record created successfully');
       return data;
     }
   }
 
   async getFitnessRecords(userId: string) {
-    this.logger.log('[INFO FITNESS SERVICE] Fetching fitness records');
+    this.logger('[INFO FITNESS SERVICE] Fetching fitness records');
     const { data, error } = await this.supabase
       .from('fitness')
       .select('*')
@@ -91,13 +97,13 @@ export class FitnessService {
       .order('created_at', { ascending: false });
 
     if (error) {
-      this.logger.error(
+      this.logger(
         `[INFO FITNESS SERVICE] Failed to fetch records: ${error.message}`,
       );
       throw error;
     }
 
-    this.logger.log('[INFO FITNESS SERVICE] Records fetched successfully');
+    this.logger('[INFO FITNESS SERVICE] Records fetched successfully');
     return data;
   }
 }
