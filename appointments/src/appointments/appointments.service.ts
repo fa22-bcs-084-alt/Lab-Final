@@ -104,7 +104,7 @@ async findAll(query: {
   limit?: number
   offset?: number
 }): Promise<{ items: []; count: number }> {
-  this.logger("APPOINTMENT QUERY CALLED, QUERY="+query)
+  this.logger("APPOINTMENT QUERY CALLED, QUERY="+JSON.stringify(query,null,2))
   let q = this.supabase.from('appointments').select('*', { count: 'exact' })
 
   if (query.patientId) q = q.eq('patient_id', query.patientId)
