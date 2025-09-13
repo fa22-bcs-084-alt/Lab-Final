@@ -8,6 +8,7 @@ import { InjectModel } from '@nestjs/mongoose'
 import { Profile, ProfileDocument } from './schema/patient.profile.schema'
 import { Model } from 'mongoose'
 import { CompleteNutritionistAppointmentDto } from './dto/complete-nutritionist-appointment.dto'
+import { NutritionistProfile, NutritionistProfileDocument } from './schema/nutritionist-profile.schema'
 
 type DbRow = {
   id: string
@@ -44,7 +45,8 @@ type ApiRow = {
 @Injectable()
 export class AppointmentsService {
   constructor(@Inject(SUPABASE) private readonly supabase: SupabaseClient,
- @InjectModel(Profile.name) private profileModel: Model<ProfileDocument>
+ @InjectModel(Profile.name) private profileModel: Model<ProfileDocument>,
+  @InjectModel(NutritionistProfile.name) private nut: Model<NutritionistProfileDocument>
 ) {}
 
   private toApi(r: DbRow): ApiRow {
@@ -398,10 +400,74 @@ async getActiveDietPlansForPatient(patientId: string) {
 }
 
 
-
-
   logger(msg:string){
    console.log("[INFO APPOINTMENT SERVICE] "+msg)
   }
+
+
+async getAppointmentsForPatient(patientId: string) {
+  this.logger("FETCHING APPOINTMENTS FOR PATIENT ID=" + patientId)
+
+  // first fetch appointments
+  const { data, error } = await this.supabase
+    .from('appointments')
+    .select('*')
+    .eq('patient_id', patientId)
+    .order('date', { ascending: true })
+    .order('time', { ascending: true })
+
+  if (error) {
+    this.logger("ERROR FETCHING APPOINTMENTS " + error.message)
+    throw new BadRequestException(error.message)
+  }
+
+  if (!data) return []
+
+  const results: any[] = []
+
+  for (const row of data as any[]) {
+    // fetch doctor role from users table
+    const { data: user, error: userErr } = await this.supabase
+      .from('users')
+      .select('id, role')
+      .eq('id', row.doctor_id)
+      .single()
+
+    if (userErr) {
+      this.logger("ERROR FETCHING USER ROLE " + userErr.message)
+      throw new BadRequestException(userErr.message)
+    }
+
+    let doctorDetails: any = null
+    if (user.role === 'nutritionist') {
+      doctorDetails = await this.nut.findOne({ id: user.id }).lean()
+    }
+    // else if (user.role === 'doctor') {
+    //   doctorDetails = null // not implemented yet
+    // }
+
+    results.push({
+      id: row.id,
+      patientId: row.patient_id,
+      doctorId: row.doctor_id,
+      doctorRole: user.role,
+      doctorDetails,
+      date: row.date,
+      time: row.time,
+      status: row.status,
+      type: row.type,
+      notes: row.notes ?? undefined,
+      report: row.report ?? undefined,
+      mode: row.mode,
+      dataShared: row.data_shared,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    })
+  }
+
+  this.logger("TOTAL " + results.length + " APPOINTMENTS RETURNED FOR PATIENT")
+  return results
+}
+
 
 }

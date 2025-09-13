@@ -73,5 +73,11 @@ getActiveDietPlansForPatient(@Payload() patientId: string) {
 }
 
 
+@MessagePattern({ cmd: 'get_appointments_for_patient' })
+getAppointmentsForPatient(@Payload() patientId: string) {
+  return this.svc.getAppointmentsForPatient(patientId)
+}
+
+
 
 }

@@ -16,30 +16,30 @@ export class AppointmentsController {
     return this.client.send({ cmd: 'create_appointment' }, dto)
   }
 
-  @Get()
-  findAll(
-    @Query('patientId') patientId?: string,
-    @Query('doctorId') doctorId?: string,
-    @Query('status') status?: AppointmentStatus,
-    @Query('type') type?: AppointmentTypes,
-    @Query('mode') mode?: AppointmentMode,
-    @Query('from') from?: string,
-    @Query('to') to?: string,
-    @Query('limit') limit?: string,
-    @Query('offset') offset?: string,
-  ) {
-    return this.client.send({ cmd: 'find_all_appointments' }, {
-      patientId,
-      doctorId,
-      status,
-      type,
-      mode,
-      from,
-      to,
-      limit: limit ? parseInt(limit, 10) : undefined,
-      offset: offset ? parseInt(offset, 10) : undefined,
-    })
-  }
+  // @Get()
+  // findAll(
+  //   @Query('patientId') patientId?: string,
+  //   @Query('doctorId') doctorId?: string,
+  //   @Query('status') status?: AppointmentStatus,
+  //   @Query('type') type?: AppointmentTypes,
+  //   @Query('mode') mode?: AppointmentMode,
+  //   @Query('from') from?: string,
+  //   @Query('to') to?: string,
+  //   @Query('limit') limit?: string,
+  //   @Query('offset') offset?: string,
+  // ) {
+  //   return this.client.send({ cmd: 'find_all_appointments' }, {
+  //     patientId,
+  //     doctorId,
+  //     status,
+  //     type,
+  //     mode,
+  //     from,
+  //     to,
+  //     limit: limit ? parseInt(limit, 10) : undefined,
+  //     offset: offset ? parseInt(offset, 10) : undefined,
+  //   })
+  // }
 
   @Get(':id')
   findOne(@Param('id', new ParseUUIDPipe()) id: string) {
@@ -65,6 +65,10 @@ export class AppointmentsController {
     return this.client.send({ cmd: 'complete_nutritionist_appointment' }, { id, ...body })
   }
 
+    @Get()
+  async getAppointmentsByPatient(@Query('patientId') patientId: string) {
+     return this.client.send({ cmd: 'get_appointments_for_patient' },  patientId)
+  }
 
   
 }
