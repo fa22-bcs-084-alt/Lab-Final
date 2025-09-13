@@ -5,6 +5,7 @@ import { UploadApiResponse, v2 as cloudinary } from 'cloudinary'
 import { Readable } from 'stream'
 import axios from 'axios'
 import FormData from 'form-data'
+import fs from 'fs'
 
 @Injectable()
 export class MedicalRecordsService {
@@ -60,18 +61,21 @@ async uploadFile(patientId: string, fileBuffer: Buffer | any, fileName: string, 
     }])
     .select()
     .single()
-  
-    const formData = new FormData()
-    formData.append('patientId', patientId)
-    formData.append('title', dto.title)
-    formData.append('recordType', 'report')
-    formData.append('doctorName', dto.doctor_name || '')
-    formData.append('fileUrl', upload.secure_url)
-    formData.append('file', fileBuffer, { filename: `${dto.title}.pdf`, contentType: 'application/pdf' })
-  
-    await axios.post(this.fastApiUrl, formData, {
-      headers: formData.getHeaders(),
-    })
+  const formData = new FormData()
+formData.append('patientId', patientId)
+formData.append('title', dto.title)
+formData.append('recordType', 'report')
+formData.append('doctorName', dto.doctor_name || '')
+formData.append('fileUrl', upload.secure_url)
+
+try {
+  const res = await axios.post(this.fastApiUrl, formData, {
+    headers: formData.getHeaders()
+  })
+  console.log(res.data)
+} catch (e) {
+  console.error(e.response?.data || e.message)
+}
   
 
   if (error) throw error

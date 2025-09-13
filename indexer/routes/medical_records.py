@@ -17,12 +17,11 @@ async def index_record(
     title: str = Form(None),
     recordType: str = Form(None),
     doctorName: str = Form(None),
-  
-    file: UploadFile = None
+  fileUrl:str=Form(None),
+   
 ):
-    if file:
-        data = await file.read()
-    elif fileUrl:
+
+    if fileUrl:
         resp = requests.get(fileUrl)
         resp.raise_for_status()
         data = resp.content
@@ -35,6 +34,7 @@ async def index_record(
         "recordType": recordType,
         "doctorName": doctorName
     }
+    print("payload=",payload)
     res = upsert_document(payload, data)
     return JSONResponse(res)
 
