@@ -111,7 +111,7 @@ async findAll(query: {
 
   if (query.patientId) q = q.eq('patient_id', query.patientId)
   if (query.doctorId) q = q.eq('doctor_id', query.doctorId)
-  if (query.status) q = q.eq('status', query.status)
+  if (query.status && query.status!='all') q = q.eq('status', query.status)
   if (query.type) q = q.eq('type', query.type)
   if (query.mode) q = q.eq('mode', query.mode)
   if (query.from) q = q.gte('date', query.from)
@@ -125,6 +125,7 @@ async findAll(query: {
   if (error) throw new BadRequestException(error.message)
   if (!data) return { items: [], count: 0 }
 
+  console.log("Data=",data)
   const items:any = []
   for (const row of data as DbRow[]) {
     const patient = await this.profileModel.findOne({ id: row.patient_id }).lean()
@@ -159,17 +160,37 @@ async findAll(query: {
     return this.toApi(data as DbRow)
   }
 
-  async update(id: string, dto: UpdateAppointmentDto): Promise<ApiRow> {
-    this.logger(" APPOINTMENT UPDATE CALLED FOR APPOINTMENT ID="+id+" PAYLOAD= "+dto)
-    const payload = this.toDb(dto)
+async update(id: string, dto: any): Promise<ApiRow> {
+  this.logger("APPOINTMENT UPDATE CALLED FOR APPOINTMENT ID=" + id )
 
-    const { data, error } = await this.supabase.from('appointments').update(payload).eq('id', id).select().single()
-    if (error?.message?.includes('No rows')) throw new NotFoundException('appointment not found')
-    if (error) throw new BadRequestException(error.message)
-    this.logger(" ")  
-  this.logger(" APPOINTMENT UPDATED SUCCESSFULLY APPOINTMENT FOR= "+id)
-    return this.toApi(data as DbRow)
+  const payload = {
+    patient_id: dto.patient?.id,
+    doctor_id: dto.doctor?.id,
+    date: dto.date,
+    time: dto.time,
+    status: dto.status,
+    type: dto.type,
+    notes: dto.notes,
+    mode: dto.mode,
+    data_shared: dto.dataShared
   }
+
+  this.logger("APPOINTMENT UPDATE PAYLOAD= " + JSON.stringify(payload,null,2) )
+
+  const { data, error } = await this.supabase
+    .from('appointments')
+    .update(payload)
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error?.message?.includes('No rows')) throw new NotFoundException('appointment not found')
+  if (error) throw new BadRequestException(error.message)
+
+  this.logger("APPOINTMENT UPDATED SUCCESSFULLY FOR=" + id)
+  return this.toApi(data as DbRow)
+}
+
 
   async remove(id: string): Promise<{ id: string; deleted: boolean }> {
     this.logger(" APPOINTMENT CANCEL CALLED FOR APPOINTMENT ID= "+id)
@@ -468,6 +489,86 @@ async getAppointmentsForPatient(patientId: string) {
   this.logger("TOTAL " + results.length + " APPOINTMENTS RETURNED FOR PATIENT")
   return results
 }
+
+
+
+
+
+
+
+async getAvailableSlots(providerId: string, role: string, date: string) {
+  this.logger(`Fetching available slots for providerId=${providerId}, role=${role}, date=${date}`)
+
+  // 1. Fetch provider profile based on role
+  let profile: any = null
+
+  if (role === 'nutritionist') {
+    this.logger(`Looking up nutritionist profile for ${providerId}`)
+    profile = await this.nut.findOne({ id: providerId }).lean()
+  } else if (role === 'doctor') {
+    this.logger(`Doctor profile fetching not implemented for ${providerId}`)
+    return { slots: [], message: 'Doctor profile fetching not implemented yet' }
+  }
+
+  if (!profile) {
+    this.logger(`No profile found for providerId=${providerId}, role=${role}`)
+    throw new BadRequestException(`Profile not found for provider ${providerId} with role ${role}`)
+  }
+
+  // 2. Fetch booked appointments for this provider on the given date
+  this.logger(`Fetching appointments for providerId=${providerId} on date=${date}`)
+  const { data: appointments, error } = await this.supabase
+    .from('appointments')
+    .select('time')
+    .eq('doctor_id', providerId)
+    .eq('date', date)
+
+  if (error) {
+    this.logger(`Error fetching appointments: ${error.message}`)
+    throw new BadRequestException(error.message)
+  }
+
+  const bookedTimes = (appointments ?? []).map(a => a.time)
+  this.logger(`Booked times on ${date}: ${bookedTimes.join(', ') || 'none'}`)
+
+  // 3. Find working hours for the given date
+  const dayOfWeek = new Date(date).toLocaleString('en-US', { weekday: 'long' }) // e.g. "Monday"
+  this.logger(`Resolved day of week: ${dayOfWeek}`)
+
+  const workingDay = profile.workingHours.find(
+    (d: any) => d.day.toLowerCase() === dayOfWeek.toLowerCase()
+  )
+
+  if (!workingDay) {
+    this.logger(`Provider does not work on ${dayOfWeek}`)
+    return { slots: [], message: `Provider does not work on ${dayOfWeek}` }
+  }
+
+  this.logger(`Working hours: ${workingDay.start} - ${workingDay.end}`)
+
+  // 4. Generate 1-hour slots between start and end
+  const slots: string[] = []
+  const startHour = parseInt(workingDay.start.split(':')[0], 10)
+  const endHour = parseInt(workingDay.end.split(':')[0], 10)
+
+  for (let hour = startHour; hour < endHour; hour++) {
+    const slot = `${hour.toString().padStart(2, '0')}:00:00`
+    if (!bookedTimes.includes(slot)) {
+      slots.push(slot)
+    }
+  }
+
+  this.logger(`Available slots: ${slots.join(', ') || 'none'}`)
+
+  return {
+    providerId,
+    role,
+    date,
+    availableSlots: slots,
+  }
+}
+
+
 
 
 }

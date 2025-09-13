@@ -2,6 +2,7 @@ export enum AppointmentStatus {
   Upcoming = 'upcoming',
   Completed = 'completed',
   Cancelled = 'cancelled',
+  ALL= 'all'
 }
 
 export enum AppointmentTypes {

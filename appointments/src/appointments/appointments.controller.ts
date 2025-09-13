@@ -5,6 +5,7 @@ import { CreateAppointmentDto } from './dto/create-appointment.dto'
 import { UpdateAppointmentDto } from './dto/update-appointment.dto'
 import { CompleteNutritionistAppointmentDto } from './dto/complete-nutritionist-appointment.dto'
 import { AppointmentMode, AppointmentStatus, AppointmentTypes } from './appointment.enums'
+import { AvailableSlotsQueryDto } from './dto/available-slots.dto'
 
 @Controller()
 export class AppointmentsController {
@@ -76,6 +77,12 @@ getActiveDietPlansForPatient(@Payload() patientId: string) {
 @MessagePattern({ cmd: 'get_appointments_for_patient' })
 getAppointmentsForPatient(@Payload() patientId: string) {
   return this.svc.getAppointmentsForPatient(patientId)
+}
+
+
+@MessagePattern({ cmd: 'get_available_slots' })
+getAvailableSlots(@Payload() payload:AvailableSlotsQueryDto) {
+  return this.svc.getAvailableSlots(payload.providerId, payload.role, payload.date)
 }
 
 
