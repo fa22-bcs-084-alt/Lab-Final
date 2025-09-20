@@ -33,6 +33,7 @@ async getAvailableSlots(@Query() query: AvailableSlotsQueryDto) {
   async getAppointmentsByPatient(@Query('patientId') patientId: string) {
      return this.client.send({ cmd: 'get_appointments_for_patient' },  patientId)
   }
+  
 
   
   @Get()
