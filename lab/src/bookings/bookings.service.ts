@@ -7,7 +7,10 @@ import { Readable } from 'stream';
 import * as nodemailer from 'nodemailer';
   import axios from 'axios'
 import FormData from 'form-data'
-
+import autoTable from "jspdf-autotable"
+import { jsPDF } from "jspdf"
+import fs from "fs"
+import path from "path"
 
 export interface BookedLabTest {
   id: string
@@ -192,25 +195,160 @@ async uploadScan(
 
 
 
-
 async uploadResult(
   bookingId: string,
-  body: { title: string; resultData: string; doctor_name?: string },
+  body: { title: string; resultData: any[]; doctor_name?: string },
 ) {
-  // generate PDF
-  const doc = new PDFDocument()
-  const chunks: Buffer[] = []
+  const pageWidth = 595.28
+  const pageHeight = 841.89
+  const primaryColor: [number, number, number] = [0, 131, 150]
 
-  doc.on('data', (chunk) => chunks.push(chunk))
-  doc.text(body.resultData)
-  doc.end()
-  await new Promise<void>((resolve) => doc.on('end', resolve))
-  const pdfBuffer = Buffer.concat(chunks)
+  const loadBase64 = (fileName: string) => {
+    const absPath = path.resolve(process.cwd(), "src", "assets", fileName)
+    const file = fs.readFileSync(absPath)
+    return `data:image/png;base64,${file.toString("base64")}`
+  }
 
-  // upload to Cloudinary
+  let logoDataUrl: string | null = null
+  let watermarkDataUrl: string | null = null
+  try {
+    logoDataUrl = loadBase64("logo.png")
+    watermarkDataUrl = loadBase64("logo-2.png")
+  } catch (err) {
+    console.warn("Logo/Watermark not loaded:", err)
+  }
+
+  const doc = new jsPDF({ unit: "pt", format: "a4" })
+
+  doc.setProperties({
+    title: body.title,
+    subject: "Lab Report",
+    author: body.doctor_name || "Lab",
+    keywords: "lab, report, medical",
+    creator: "Hygieia",
+  })
+
+  // header
+  if (logoDataUrl) {
+    doc.addImage(logoDataUrl, "PNG", 40, 25, 50, 50)
+  }
+  doc.setFontSize(20)
+  doc.setFont("helvetica", "bold")
+  doc.setTextColor(...primaryColor)
+
+  const cleanTitle = body.title
+    .replace(/[-_]?results\.json$/i, "")
+    .replace(/\.json$/i, "")
+    .trim()
+
+  doc.text(cleanTitle, pageWidth / 2, 55, { align: "center" })
+  doc.setDrawColor(...primaryColor)
+
+  // === fetch patient info ===
+  const patientId = (
+    await this.supabase.from("booked_lab_tests").select("patient_id").eq("id", bookingId).single()
+  ).data?.patient_id
+
+  const { data: patient } = await this.supabase
+    .from("users")
+    .select("email")
+    .eq("id", patientId)
+    .single()
+
+  const dateStr = new Date().toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  })
+
+  // patient/report info block with colors
+  const infoStartY = 95
+  const leftX = 40
+  const rightX = pageWidth / 2 + 20
+  const labelColor: [number, number, number] = primaryColor
+  const valueColor: [number, number, number] = [80, 80, 80]
+
+  doc.setFontSize(12)
+  doc.setFont("helvetica", "bold")
+  doc.setTextColor(...labelColor)
+  doc.text(`Report Name:`, leftX, infoStartY)
+  doc.text(`Patient Email:`, rightX, infoStartY)
+  doc.text(`Date:`, leftX, infoStartY + 20)
+  doc.text(`Referred by:`, rightX, infoStartY + 20)
+
+  doc.setFont("helvetica", "normal")
+  doc.setTextColor(...valueColor)
+  doc.text(cleanTitle, leftX + 90, infoStartY)
+  if (patient?.email) doc.text(patient.email, rightX + 80, infoStartY)
+  doc.text(dateStr, leftX + 50, infoStartY + 20)
+  doc.text(body.doctor_name || "-", rightX + 80, infoStartY + 20)
+
+  doc.setDrawColor(...primaryColor)
+  doc.setLineWidth(0.3)
+  doc.line(40, infoStartY + 35, pageWidth - 40, infoStartY + 35)
+
+  let cursorY = infoStartY + 60
+
+  if (!body.resultData || body.resultData.length === 0) {
+    doc.text("No results available.", 40, cursorY)
+  } else {
+    const tableBody = body.resultData.map((row: any) => [
+      row.test ?? "-",
+      row.reference ?? "-",
+      row.unit ?? "-",
+      row.result ?? "-",
+    ])
+
+    autoTable(doc, {
+      startY: cursorY,
+      head: [["Test", "Reference", "Unit", "Result"]],
+      body: tableBody,
+      theme: "grid",
+      styles: { fontSize: 10, cellPadding: 6 },
+      headStyles: { fillColor: primaryColor, textColor: [255, 255, 255] },
+      alternateRowStyles: { fillColor: [245, 245, 245] },
+      margin: { left: 40, right: 40 },
+    })
+
+    cursorY = (doc as any).lastAutoTable.finalY + 30
+  }
+
+  const pageCount = doc.getNumberOfPages()
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i)
+    doc.setFontSize(9)
+    doc.setTextColor(120, 120, 120)
+    doc.text(`Page ${i} of ${pageCount}`, pageWidth / 2, pageHeight - 20, { align: "center" })
+  }
+
+  if (watermarkDataUrl) {
+    const wmW = pageWidth * 0.5
+    const wmH = pageHeight * 0.5
+    const x = (pageWidth - wmW) / 2
+    const y = (pageHeight - wmH) / 2
+
+    const gState = doc.GState({ opacity: 0.1 })
+    doc.setGState(gState)
+
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i)
+      doc.addImage(watermarkDataUrl, "PNG", x, y, wmW, wmH)
+    }
+
+    doc.setGState(new (doc as any).GState({ opacity: 1 }))
+  }
+
+  const pdfBuffer = Buffer.from(doc.output("arraybuffer"))
+
+  // === upload to Cloudinary ===
   const uploaded = await new Promise<any>((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
-      { folder: 'medical_records/results', resource_type: 'auto', format: 'pdf' },
+      {
+        folder: "medical_records/results",
+        resource_type: "raw",
+        public_id: cleanTitle.replace(/\s+/g, "_"),
+        format: "pdf",
+      },
       (error, result) => (error ? reject(error) : resolve(result)),
     )
     const readable = new Readable()
@@ -219,21 +357,15 @@ async uploadResult(
     readable.pipe(stream)
   })
 
-  // save in Supabase
-  const patientId = (
-    await this.supabase
-      .from('booked_lab_tests')
-      .select('patient_id')
-      .eq('id', bookingId)
-      .single()
-  ).data?.patient_id
+  console.log("upload report cloudinary url=", uploaded.secure_url)
 
-  const { data, error } = await this.supabase.from('medical_records').insert([
+  const { data, error } = await this.supabase.from("medical_records").insert([
     {
+      results: JSON.stringify(body.resultData, null, 2),
       booked_test_id: bookingId,
       patient_id: patientId,
-      title: body.title,
-      record_type: 'report',
+      title: cleanTitle,
+      record_type: "report",
       date: new Date().toISOString(),
       file_url: uploaded.secure_url,
       doctor_name: body.doctor_name,
@@ -242,43 +374,27 @@ async uploadResult(
 
   if (error) throw new Error(error.message)
 
-  // update booking status
-  await this.supabase
-    .from('booked_lab_tests')
-    .update({ status: 'completed' })
-    .eq('id', bookingId)
-
-  // send email
-  const { data: patient } = await this.supabase
-    .from('users')
-    .select('email')
-    .eq('id', patientId)
-    .single()
+  await this.supabase.from("booked_lab_tests").update({ status: "completed" }).eq("id", bookingId)
 
   if (patient?.email) {
     await this.sendEmail(
       patient.email,
-      'Lab Report Available',
-      `Your lab report "${body.title}" for booking ID ${bookingId} is now available.`,
+      "Lab Report Available",
+      `Your lab report "${cleanTitle}" for booking ID ${bookingId} is now available.`,
     )
   }
-
-  // --- send to FastAPI /index ---
-  const formData = new FormData()
-  formData.append('patientId', patientId)
-  formData.append('title', body.title)
-  formData.append('recordType', 'report')
-  formData.append('doctorName', body.doctor_name || '')
-  formData.append('fileUrl', uploaded.secure_url)
-  formData.append('file', pdfBuffer, { filename: `${body.title}.pdf`, contentType: 'application/pdf' })
-
-  await axios.post(this.fastApiUrl, formData, {
-    headers: formData.getHeaders(),
-  })
-
-  return data
+ 
+  return   {
+      results: JSON.stringify(body.resultData, null, 2),
+      booked_test_id: bookingId,
+      patient_id: patientId,
+      title: cleanTitle,
+      record_type: "report",
+      date: new Date().toISOString(),
+      file_url: uploaded.secure_url,
+      doctor_name: body.doctor_name,
+    }
 }
-
 
 
 

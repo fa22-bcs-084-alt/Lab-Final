@@ -63,7 +63,7 @@ async uploadScan(
       bookingId: string
       doctor_name?: string
       title: string
-      resultData: string
+      resultData: any[]
     }
   ) {
     return this.bookedLabTestsService.uploadResult(body.bookingId, body)
