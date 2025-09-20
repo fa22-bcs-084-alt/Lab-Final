@@ -105,7 +105,7 @@ async findAll(query: {
   to?: string
   limit?: number
   offset?: number
-}): Promise<{ items: []; count: number }> {
+}): Promise<{ items: any[]; count: number }> {
   this.logger("APPOINTMENT QUERY CALLED, QUERY="+JSON.stringify(query,null,2))
   let q = this.supabase.from('appointments').select('*', { count: 'exact' })
 
@@ -123,18 +123,22 @@ async findAll(query: {
 
   const { data, error, count } = await q
   if (error) throw new BadRequestException(error.message)
-  if (!data) return { items: [], count: 0 }
+  if (!data || data.length === 0) return { items: [], count: 0 }
 
-  console.log("Data=",data)
-  const items:any = []
-  for (const row of data as DbRow[]) {
-    const patient = await this.profileModel.findOne({ id: row.patient_id }).lean()
-    if (!patient) continue
+  console.log("Data=", data)
 
-    items.push({
+  // Fetch all patients in parallel
+  const patientPromises = data.map(row => this.profileModel.findOne({ id: row.patient_id }).lean())
+  const patients = await Promise.all(patientPromises)
+
+  const items:any[] = data.map((row, i) => {
+    const patient = patients[i]
+    if (!patient) return null
+
+    return {
       id: row.id,
-      patient: patient as any, // ProfileType
-      doctor: { id: row.doctor_id } as any, // plug doctor lookup here if you want full profile
+      patient: patient as any,
+      doctor: { id: row.doctor_id } as any, // plug doctor lookup later
       date: row.date,
       time: row.time,
       status: row.status as AppointmentStatus,
@@ -143,12 +147,13 @@ async findAll(query: {
       report: row.report ?? undefined,
       mode: row.mode as AppointmentMode,
       dataShared: row.data_shared,
-    })
-  }
+    }
+  }).filter(Boolean) as any[]
 
-  this.logger("Total APPOINTMENT ITEMS RETURNED ARE "+(count ?? 0))
+  this.logger("Total APPOINTMENT ITEMS RETURNED ARE " + (count ?? 0))
   return { items, count: count ?? 0 }
 }
+
 
 
   async findOne(id: string): Promise<ApiRow> {
@@ -201,43 +206,38 @@ async update(id: string, dto: any): Promise<ApiRow> {
   }
 
 
-
-  async completeNutritionistAppointment(
+async completeNutritionistAppointment(
   id: string,
   dto: CompleteNutritionistAppointmentDto,
   nutritionistId: string
 ): Promise<ApiRow> {
   this.logger(" COMPLETE NUTRITIONIST APPOINTMENT CALLED FOR NUTRITIONIST ID= "+nutritionistId)
-  // fetch appointment
+  
   const { data: appointment, error } = await this.supabase
     .from('appointments')
     .select('*')
     .eq('id', id)
     .single()
 
-   this.logger(" NUTRITIONIST APPOINTMENT FOUND FOR NUTRITIONIST ID= "+nutritionistId+ " APPOINTMENT ID"+appointment.id)
-
   if (error?.message?.includes('No rows')) throw new NotFoundException('appointment not found')
   if (error) throw new BadRequestException(error.message)
 
   const appt = appointment as DbRow
 
-if (dto.referredTestIds && dto.referredTestIds.length > 0) {
-  const inserts = dto.referredTestIds.map(testId => ({
-    test_id: testId,
-    patient_id: appt.patient_id,
-    referrer_id: nutritionistId,
-  }))
+  const tasks: Promise<any>[] = []
 
-   this.logger("NUTRITIONIST REFERRED TOTAL "+inserts.length+" TEST(s)")
-  const { error: testErr } = await this.supabase.from('referred_tests').insert(inserts)
-  if (testErr) throw new BadRequestException(testErr.message)
-}
+  if (dto.referredTestIds?.length) {
+    const inserts = dto.referredTestIds.map(testId => ({
+      test_id: testId,
+      patient_id: appt.patient_id,
+      referrer_id: nutritionistId,
+    }))
+    this.logger("NUTRITIONIST REFERRED TOTAL "+inserts.length+" TEST(s)")
+    tasks.push(this.supabase.from('referred_tests').insert(inserts).then(r => r) as any) // <-- wrap as Promise
+  }
 
-  this.logger("REFERRED ALL TEST(s) TO THE PATIENT")
-  // create diet plan if provided
   if (dto.dietPlan) {
-    const { error: dietErr } = await this.supabase.from('diet_plan').insert({
+    const dietInsert = this.supabase.from('diet_plan').insert({
       patient_id: appt.patient_id,
       nutritionist_id: nutritionistId,
       daily_calories: dto.dietPlan.dailyCalories,
@@ -250,13 +250,17 @@ if (dto.referredTestIds && dto.referredTestIds.length > 0) {
       exercise: dto.dietPlan.exercise,
       start_date: dto.dietPlan.startDate ?? null,
       end_date: dto.dietPlan.endDate ?? null,
-    })
-    if (dietErr) throw new BadRequestException(dietErr.message)
-      
-    this.logger("DIET PLAN ASSIGNED TO THE PATIENT")
+    }).then(r => r) // <-- wrap as Promise
+    tasks.push(dietInsert as any)
   }
 
-  // update appointment with report + mark as completed
+  const results = await Promise.all(tasks)
+  results.forEach((res) => {
+    if (res.error) throw new BadRequestException(res.error.message)
+  })
+
+  this.logger("REFERRED ALL TEST(s) AND/OR DIET PLAN ASSIGNED TO THE PATIENT")
+
   const { data: updated, error: updateErr } = await this.supabase
     .from('appointments')
     .update({
@@ -269,11 +273,12 @@ if (dto.referredTestIds && dto.referredTestIds.length > 0) {
     .single()
 
   if (updateErr) throw new BadRequestException(updateErr.message)
-    
-    this.logger("APPOINTMENT STATUS UPDATED FOR THE PATIENT")
+  
+  this.logger("APPOINTMENT STATUS UPDATED FOR THE PATIENT")
 
   return this.toApi(updated as DbRow)
 }
+
 
 // Get all diet plans assigned by a nutritionist
 async getAssignedDietPlans(nutritionistId: string) {
@@ -421,16 +426,12 @@ async getActiveDietPlansForPatient(patientId: string) {
 }
 
 
-  logger(msg:string){
-   console.log("[INFO APPOINTMENT SERVICE] "+msg)
-  }
 
 
 async getAppointmentsForPatient(patientId: string) {
   this.logger("FETCHING APPOINTMENTS FOR PATIENT ID=" + patientId)
 
-  // first fetch appointments
-  const { data, error } = await this.supabase
+  const { data: appointments, error } = await this.supabase
     .from('appointments')
     .select('*')
     .eq('patient_id', patientId)
@@ -442,53 +443,57 @@ async getAppointmentsForPatient(patientId: string) {
     throw new BadRequestException(error.message)
   }
 
-  if (!data) return []
+  if (!appointments || appointments.length === 0) return []
 
-  const results: any[] = []
+  // get all unique doctor IDs
+  const doctorIds = [...new Set(appointments.map(a => a.doctor_id))]
 
-  for (const row of data as any[]) {
-    // fetch doctor role from users table
-    const { data: user, error: userErr } = await this.supabase
-      .from('users')
-      .select('id, role')
-      .eq('id', row.doctor_id)
-      .single()
+  // batch fetch all doctor roles at once
+  const { data: users, error: userErr } = await this.supabase
+    .from('users')
+    .select('id, role')
+    .in('id', doctorIds)
 
-    if (userErr) {
-      this.logger("ERROR FETCHING USER ROLE " + userErr.message)
-      throw new BadRequestException(userErr.message)
-    }
-
-    let doctorDetails: any = null
-    if (user.role === 'nutritionist') {
-      doctorDetails = await this.nut.findOne({ id: user.id }).lean()
-    }
-    // else if (user.role === 'doctor') {
-    //   doctorDetails = null // not implemented yet
-    // }
-
-    results.push({
-      id: row.id,
-      patientId: row.patient_id,
-      doctorId: row.doctor_id,
-      doctorRole: user.role,
-      doctorDetails,
-      date: row.date,
-      time: row.time,
-      status: row.status,
-      type: row.type,
-      notes: row.notes ?? undefined,
-      report: row.report ?? undefined,
-      mode: row.mode,
-      dataShared: row.data_shared,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-    })
+  if (userErr) {
+    this.logger("ERROR FETCHING USER ROLES " + userErr.message)
+    throw new BadRequestException(userErr.message)
   }
+
+  const userMap = new Map(users.map(u => [u.id, u]))
+
+  // fetch doctorDetails in parallel only for nutritionists
+  const results = await Promise.all(
+    appointments.map(async row => {
+      const user = userMap.get(row.doctor_id)
+      let doctorDetails: any = null
+      if (user?.role === 'nutritionist') {
+        doctorDetails = await this.nut.findOne({ id: user.id }).lean()
+      }//else docotr thing
+
+      return {
+        id: row.id,
+        patientId: row.patient_id,
+        doctorId: row.doctor_id,
+        doctorRole: user?.role,
+        doctorDetails,
+        date: row.date,
+        time: row.time,
+        status: row.status,
+        type: row.type,
+        notes: row.notes ?? undefined,
+        report: row.report ?? undefined,
+        mode: row.mode,
+        dataShared: row.data_shared,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      }
+    })
+  )
 
   this.logger("TOTAL " + results.length + " APPOINTMENTS RETURNED FOR PATIENT")
   return results
 }
+
 
 
 
@@ -569,6 +574,11 @@ async getAvailableSlots(providerId: string, role: string, date: string) {
 }
 
 
+
+
+  logger(msg:string){
+   console.log("[INFO APPOINTMENT SERVICE] "+msg)
+  }
 
 
 }
