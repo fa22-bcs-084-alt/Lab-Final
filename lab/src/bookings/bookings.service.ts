@@ -8,6 +8,9 @@ import autoTable from "jspdf-autotable"
 import { jsPDF } from "jspdf"
 import fs from "fs"
 import path from "path"
+import { InjectModel } from '@nestjs/mongoose';
+import { Profile, ProfileDocument } from './schema/patient.profile.schema';
+import { Model } from 'mongoose';
 
 export interface BookedLabTest {
   id: string
@@ -31,7 +34,7 @@ export class BookingsService {
 
 
 
-  constructor(private configService: ConfigService) {
+  constructor(private configService: ConfigService , @InjectModel(Profile.name) private profileModel: Model<ProfileDocument>) {
     this.supabase = createClient(
       this.configService.get<string>('SUPABASE_URL')!,
       this.configService.get<string>('SUPABASE_SERVICE_ROLE_KEY')!,
@@ -239,6 +242,9 @@ async uploadResult(
   const pageWidth = 595.28;
   const pageHeight = 841.89;
   const primaryColor: [number, number, number] = [0, 131, 150];
+  const grayText: [number, number, number] = [60, 60, 60];
+  const M = { left: 48, right: 48, top: 160, bottom: 72 };
+  const headerHeight = 120;
 
   const loadBase64 = (fileName: string) => {
     const absPath = path.resolve(process.cwd(), "src", "assets", fileName);
@@ -246,7 +252,6 @@ async uploadResult(
     return `data:image/png;base64,${file.toString("base64")}`;
   };
 
-  // load logo and watermark in parallel
   const [logoDataUrl, watermarkDataUrl] = await Promise.all(
     ["logo.png", "logo-2.png"].map(async fileName => {
       try {
@@ -258,108 +263,405 @@ async uploadResult(
     })
   );
 
-  // fetch patientId and email in parallel
+  // Fetch booking details with all relevant info
   const { data: bookedTest, error: bookedError } = await this.supabase
     .from("booked_lab_tests")
-    .select("patient_id")
+    .select("patient_id,test_id,scheduled_date,scheduled_time,location,instructions")
     .eq("id", bookingId)
     .single();
   if (bookedError || !bookedTest?.patient_id) throw new Error("Booking not found or patient ID missing");
-
   const patientId = bookedTest.patient_id;
-  const { data: patient } = await this.supabase
+  const testId = bookedTest.test_id;
+
+  // Fetch patient email from users table
+  const { data: patientRow } = await this.supabase
     .from("users")
     .select("email")
     .eq("id", patientId)
     .single();
 
+  // Fetch patient profile from MongoDB
+  let patientProfileFromMongo: any = {};
+  try {
+    if ((this as any).profileModel) {
+      patientProfileFromMongo = await (this as any).profileModel.findOne({ id: patientId }).lean().exec();
+    }
+  } catch (e) {
+    this.logger(`Mongo profile fetch failed: ${e}`);
+  }
+
+  // Fetch lab test details
+  const { data: labTestRow } = await this.supabase
+    .from("lab_tests")
+    .select("name,description,category,price,duration,preparation_instructions,unit,optimal_range,record_type")
+    .eq("id", testId)
+    .single();
+
   const doc = new jsPDF({ unit: "pt", format: "a4" });
+  const now = new Date();
+  const dateStr = now.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+  const timeStr = now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 
-  const cleanTitle = body.title.replace(/[-_]?results\.json$/i, "").replace(/\.json$/i, "").trim();
+  const hospitalName = "Hygieia";
+  const hospitalTagline = "From Past to Future of Healthcare";
+  const hospitalAddress = "www.hygieia-frontend.vercel.app";
+  const hospitalContact = "+92 80 1234 5678 • hygieia.fyp@gmail.com";
 
-  // Header
-  if (logoDataUrl) doc.addImage(logoDataUrl, "PNG", 40, 25, 50, 50);
-  doc.setFontSize(20);
+  const drawHeader = (d: any) => {
+    // Hospital logo and branding
+    if (logoDataUrl) d.addImage(logoDataUrl, "PNG", M.left, 44, 56, 56);
+    
+    // Hospital name and details
+    d.setTextColor(...primaryColor);
+    d.setFont("helvetica", "bold");
+    d.setFontSize(18);
+    d.text(hospitalName, M.left + 70, 60);
+    d.setFont("helvetica", "normal");
+    d.setFontSize(12);
+    d.setTextColor(...grayText);
+    d.text(hospitalTagline, M.left + 70, 78);
+    d.setFontSize(10);
+    d.setTextColor(80, 80, 80);
+    d.text(hospitalAddress, M.left + 70, 94);
+    d.text(hospitalContact, M.left + 70, 108);
+    
+    // Report title and details
+    d.setFont("helvetica", "bold");
+    d.setFontSize(20);
+    d.setTextColor(...primaryColor);
+    d.text(cleanTitle(body.title || labTestRow?.name || "Laboratory Report"), pageWidth - M.right, 64, { align: "right" });
+    d.setFont("helvetica", "normal");
+    d.setFontSize(11);
+    d.setTextColor(80, 80, 80);
+    d.text(`Report Date: ${dateStr}`, pageWidth - M.right, 80, { align: "right" });
+    d.text(`Generated: ${timeStr}`, pageWidth - M.right, 92, { align: "right" });
+    
+    // Report ID
+    d.setFontSize(9);
+    d.setTextColor(120, 120, 120);
+    d.text(`Report ID: ${bookingId.slice(0, 8).toUpperCase()}`, pageWidth - M.right, 108, { align: "right" });
+    
+    // Professional separator line
+    d.setDrawColor(...primaryColor);
+    d.setLineWidth(2);
+    d.line(M.left, headerHeight, pageWidth - M.right, headerHeight);
+  };
+
+  const drawFooter = (d: any, pageNumber: number, pageCount: number) => {
+    d.setDrawColor(...primaryColor);
+    d.setLineWidth(2);
+    d.line(M.left, pageHeight - M.bottom, pageWidth - M.right, pageHeight - M.bottom);
+    
+    // Professional medical disclaimers
+    const disclaimer1 = "This laboratory report is confidential and intended solely for the patient and their healthcare provider.";
+    const disclaimer2 = "Results should be interpreted by a qualified medical professional. Normal ranges may vary by laboratory.";
+    const disclaimer3 = "This document is computer-generated and legally binding. Report ID: " + bookingId.slice(0, 8).toUpperCase();
+    
+    d.setFont("helvetica", "normal");
+    d.setFontSize(8);
+    d.setTextColor(100, 100, 100);
+    
+    const wrapped1 = d.splitTextToSize(disclaimer1, pageWidth - M.left - M.right - 140);
+    d.text(wrapped1, M.left, pageHeight - M.bottom + 12);
+    
+    const wrapped2 = d.splitTextToSize(disclaimer2, pageWidth - M.left - M.right - 140);
+    d.text(wrapped2, M.left, pageHeight - M.bottom + 24);
+    
+    const wrapped3 = d.splitTextToSize(disclaimer3, pageWidth - M.left - M.right - 140);
+    d.text(wrapped3, M.left, pageHeight - M.bottom + 36);
+    
+    d.setFontSize(9);
+    d.text(`Page ${pageNumber} of ${pageCount}`, pageWidth / 2, pageHeight - 16, { align: "center" });
+  };
+
+  const drawWatermark = (d: any) => {
+    if (!watermarkDataUrl) return;
+    try {
+      // Create a much more subtle watermark
+      const wmW = pageWidth * 0.3;
+      const wmH = pageHeight * 0.3;
+      const x = (pageWidth - wmW) / 2;
+      const y = (pageHeight - wmH) / 2;
+      
+      // Apply very low opacity (0.03 = 3% opacity)
+      const gState = (d as any).GState ? (d as any).GState({ opacity: 0.03 }) : null;
+      if (gState && (d as any).setGState) {
+        (d as any).setGState(gState);
+        d.addImage(watermarkDataUrl, "PNG", x, y, wmW, wmH);
+        (d as any).setGState(new (d as any).GState({ opacity: 1 }));
+      } else {
+        // Fallback: just add the image without opacity control
+        d.addImage(watermarkDataUrl, "PNG", x, y, wmW, wmH);
+      }
+    } catch (err) {
+      this.logger(`watermark error: ${err}`);
+    }
+  };
+
+  const infoStartY = M.top;
+  const leftX = M.left;
+  const rightX = pageWidth / 2 + 20;
+
+  // --- Patient Information Section ---
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(13);
+  doc.setTextColor(...primaryColor);
+  doc.text("Patient Information", M.left, infoStartY - 16);
+
+  const patientInfoBody = [
+    ["Patient Name", patientProfileFromMongo?.name || "Not Available"],
+    ["Patient ID", patientId.slice(0, 8).toUpperCase()],
+    ["Email Address", patientRow?.email || "Not Available"],
+    ["Contact Number", patientProfileFromMongo?.phone || "Not Available"],
+    ["Date of Birth", patientProfileFromMongo?.dateOfBirth || "Not Available"],
+    ["Gender", patientProfileFromMongo?.gender || "Not Available"],
+    ["Blood Type", patientProfileFromMongo?.bloodType || "Not Available"],
+    ["Height", patientProfileFromMongo?.height ? `${patientProfileFromMongo.height} cm` : "Not Available"],
+    ["Weight", patientProfileFromMongo?.weight ? `${patientProfileFromMongo.weight} kg` : "Not Available"],
+    ["Address", patientProfileFromMongo?.address || "Not Available"],
+    ["Emergency Contact", patientProfileFromMongo?.emergencyContact || "Not Available"],
+    ["Known Allergies", patientProfileFromMongo?.allergies || "None Reported"],
+    ["Medical Conditions", patientProfileFromMongo?.conditions || "None Reported"],
+  ];
+
+  autoTable(doc, {
+    startY: infoStartY,
+    theme: "grid",
+    styles: { fontSize: 11, cellPadding: 6 },
+    headStyles: { fillColor: primaryColor, textColor: [255, 255, 255] },
+    margin: { top: M.top, bottom: M.bottom + 50, left: M.left, right: M.right },
+    head: [["Field", "Details"]],
+    body: patientInfoBody,
+    didDrawPage: () => {
+      drawWatermark(doc);
+      drawHeader(doc);
+      const pageNumber = (doc as any).internal.getCurrentPageInfo().pageNumber;
+      const pageCount = (doc as any).internal.getNumberOfPages();
+      drawFooter(doc, pageNumber, pageCount);
+    },
+  });
+
+  let cursorY = (doc as any).lastAutoTable.finalY + 30;
+
+  // --- Test Information Section ---
+  doc.setFontSize(13);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(...primaryColor);
-  doc.text(cleanTitle, pageWidth / 2, 55, { align: "center" });
-  doc.setDrawColor(...primaryColor);
+  doc.text("Test Information", M.left, cursorY - 10);
 
-  // Info block
-  const dateStr = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
-  const infoStartY = 95;
-  const leftX = 40;
-  const rightX = pageWidth / 2 + 20;
-  const labelColor: [number, number, number] = primaryColor;
-  const valueColor: [number, number, number] = [80, 80, 80];
+  const testInfoBody = [
+    ["Test Name", labTestRow?.name || body.title || "Laboratory Test"],
+    ["Test Category", labTestRow?.category || "General"],
+    ["Test Description", labTestRow?.description || "Diagnostic laboratory test"],
+    ["Measurement Unit", labTestRow?.unit || labTestRow?.record_type || "Various"],
+    ["Reference Range", labTestRow?.optimal_range || "See individual results"],
+    ["Test Duration", labTestRow?.duration || "24-48 hours"],
+    ["Collection Date", bookedTest?.scheduled_date ? new Date(bookedTest.scheduled_date).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "Not Available"],
+    ["Collection Time", bookedTest?.scheduled_time || "Not Available"],
+    ["Collection Location", bookedTest?.location || "Main Laboratory"],
+    ["Preparation Instructions", labTestRow?.preparation_instructions && Array.isArray(labTestRow.preparation_instructions) && labTestRow.preparation_instructions.length > 0 ? labTestRow.preparation_instructions.join("; ") : "Standard preparation"],
+    ["Special Instructions", bookedTest?.instructions && Array.isArray(bookedTest.instructions) && bookedTest.instructions.length > 0 ? bookedTest.instructions.join("; ") : "None"],
+  ];
 
-  doc.setFontSize(12);
+  autoTable(doc, {
+    startY: cursorY + 8,
+    theme: "grid",
+    styles: { fontSize: 11, cellPadding: 6 },
+    headStyles: { fillColor: primaryColor, textColor: [255, 255, 255] },
+    margin: { top: M.top, bottom: M.bottom + 50, left: M.left, right: M.right },
+    head: [["Field", "Details"]],
+    body: testInfoBody,
+    didDrawPage: () => {
+      drawWatermark(doc);
+      drawHeader(doc);
+      const pageNumber = (doc as any).internal.getCurrentPageInfo().pageNumber;
+      const pageCount = (doc as any).internal.getNumberOfPages();
+      drawFooter(doc, pageNumber, pageCount);
+    },
+  });
+
+  cursorY = (doc as any).lastAutoTable.finalY + 30;
+
+  // --- Laboratory Results Section ---
+  doc.setFontSize(14);
   doc.setFont("helvetica", "bold");
-  doc.setTextColor(...labelColor);
-  doc.text("Report Name:", leftX, infoStartY);
-  doc.text("Patient Email:", rightX, infoStartY);
-  doc.text("Date:", leftX, infoStartY + 20);
-  doc.text("Referred by:", rightX, infoStartY + 20);
-
-  doc.setFont("helvetica", "normal");
-  doc.setTextColor(...valueColor);
-  doc.text(cleanTitle, leftX + 90, infoStartY);
-  doc.text(patient?.email || "-", rightX + 80, infoStartY);
-  doc.text(dateStr, leftX + 50, infoStartY + 20);
-  doc.text(body.doctor_name || "-", rightX + 80, infoStartY + 20);
-
-  doc.setLineWidth(0.3);
-  doc.line(40, infoStartY + 35, pageWidth - 40, infoStartY + 35);
-
-  // Results table
-  let cursorY = infoStartY + 60;
-  if (!body.resultData?.length) {
-    doc.text("No results available.", 40, cursorY);
+  doc.setTextColor(...primaryColor);
+  doc.text("Laboratory Results", M.left, cursorY - 10);
+  
+  if (!Array.isArray(body.resultData) || body.resultData.length === 0) {
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(...grayText);
+    doc.text("No laboratory results available for this test.", M.left, cursorY + 10);
+    cursorY += 18;
   } else {
+    // Add results summary
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(80, 80, 80);
+    doc.text(`Total Parameters Tested: ${body.resultData.length}`, M.left, cursorY + 5);
+    doc.text(`Report Generated: ${dateStr} at ${timeStr}`, pageWidth - M.right, cursorY + 5, { align: "right" });
+    
     autoTable(doc, {
-      startY: cursorY,
-      head: [["Test", "Reference", "Unit", "Result"]],
-      body: body.resultData.map(row => [row.test ?? "-", row.reference ?? "-", row.unit ?? "-", row.result ?? "-"]),
+      startY: cursorY + 15,
+      head: [["Parameter", "Result", "Reference Range", "Unit", "Status"]],
+      body: body.resultData.map((row: any) => [
+        row.test ?? "N/A", 
+        row.result ?? "N/A", 
+        row.reference ?? "See lab notes", 
+        row.unit ?? "N/A",
+        "Normal" // You can add logic here to determine if result is normal/abnormal
+      ]),
       theme: "grid",
       styles: { fontSize: 10, cellPadding: 6 },
       headStyles: { fillColor: primaryColor, textColor: [255, 255, 255] },
-      alternateRowStyles: { fillColor: [245, 245, 245] },
-      margin: { left: 40, right: 40 },
+      alternateRowStyles: { fillColor: [248, 248, 248] },
+      margin: { top: M.top, bottom: M.bottom + 50, left: M.left, right: M.right },
+      didDrawPage: () => {
+        drawWatermark(doc);
+        drawHeader(doc);
+        const pageNumber = (doc as any).internal.getCurrentPageInfo().pageNumber;
+        const pageCount = (doc as any).internal.getNumberOfPages();
+        drawFooter(doc, pageNumber, pageCount);
+      },
     });
-    cursorY = (doc as any).lastAutoTable.finalY + 30;
+    cursorY = (doc as any).lastAutoTable.finalY + 20;
   }
 
-  // Footer page numbers
-  const pageCount = doc.getNumberOfPages();
-  for (let i = 1; i <= pageCount; i++) {
-    doc.setPage(i);
-    doc.setFontSize(9);
-    doc.setTextColor(120, 120, 120);
-    doc.text(`Page ${i} of ${pageCount}`, pageWidth / 2, pageHeight - 20, { align: "center" });
-  }
+  // --- Previous Results Section ---
+  const prevBookingsQuery = testId
+    ? this.supabase.from("booked_lab_tests").select("id,scheduled_date,status,test_id").eq("patient_id", patientId).eq("test_id", testId).neq("id", bookingId).eq("status", "completed")
+    : this.supabase.from("booked_lab_tests").select("id,scheduled_date,status,test_id").eq("patient_id", patientId).neq("id", bookingId).eq("status", "completed");
 
-  // Watermark
-  if (watermarkDataUrl) {
-    const wmW = pageWidth * 0.5;
-    const wmH = pageHeight * 0.5;
-    const x = (pageWidth - wmW) / 2;
-    const y = (pageHeight - wmH) / 2;
-    const gState = doc.GState({ opacity: 0.1 });
-    doc.setGState(gState);
-    for (let i = 1; i <= pageCount; i++) {
-      doc.setPage(i);
-      doc.addImage(watermarkDataUrl, "PNG", x, y, wmW, wmH);
+  const { data: prevBookings } = await prevBookingsQuery;
+
+  if (Array.isArray(prevBookings) && prevBookings.length > 0) {
+    cursorY += 15;
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(...primaryColor);
+    doc.text("Historical Test Results", M.left, cursorY - 10);
+    
+    // Add summary
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(80, 80, 80);
+    doc.text(`Previous tests found: ${prevBookings.length}`, M.left, cursorY + 5);
+    cursorY += 20;
+
+    for (const pb of prevBookings) {
+      const { data: prevRecordData } = await this.supabase
+        .from("medical_records")
+        .select("results,title,date,file_url,doctor_name,record_type")
+        .eq("booked_test_id", pb.id)
+        .order("date", { ascending: false })
+        .limit(1)
+        .single();
+
+      if (!prevRecordData) continue;
+
+      const prevDate = prevRecordData.date ? new Date(prevRecordData.date).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "-";
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(...primaryColor);
+      doc.text(`${prevRecordData.title || "Previous Laboratory Report"}`, M.left, cursorY);
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(80, 80, 80);
+      doc.text(`Test Date: ${prevDate}`, M.left, cursorY + 12);
+      if (prevRecordData.doctor_name) {
+        doc.text(`Reviewed by: Dr. ${prevRecordData.doctor_name}`, M.left, cursorY + 24);
+      }
+      cursorY += 35;
+
+      let parsedResults: any[] = [];
+      try {
+        parsedResults = typeof prevRecordData.results === "string" ? JSON.parse(prevRecordData.results) : prevRecordData.results;
+      } catch {
+        parsedResults = [];
+      }
+
+      if (parsedResults && parsedResults.length > 0) {
+        autoTable(doc, {
+          startY: cursorY,
+          head: [["Parameter", "Result", "Reference Range", "Unit"]],
+          body: parsedResults.map(r => [r.test ?? "N/A", r.result ?? "N/A", r.reference ?? "See notes", r.unit ?? "N/A"]),
+          theme: "grid",
+          styles: { fontSize: 9, cellPadding: 5 },
+          headStyles: { fillColor: [200, 200, 200], textColor: [40, 40, 40] },
+          alternateRowStyles: { fillColor: [252, 252, 252] },
+          margin: { top: M.top, bottom: M.bottom + 50, left: M.left + 8, right: M.right + 8 },
+          didDrawPage: () => {
+            drawWatermark(doc);
+            drawHeader(doc);
+            const pageNumber = (doc as any).internal.getCurrentPageInfo().pageNumber;
+            const pageCount = (doc as any).internal.getNumberOfPages();
+            drawFooter(doc, pageNumber, pageCount);
+          },
+        });
+        cursorY = (doc as any).lastAutoTable.finalY + 15;
+      } else {
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(10);
+        doc.setTextColor(100, 100, 100);
+        doc.text("No detailed laboratory results available for this historical test.", M.left + 8, cursorY);
+        cursorY += 20;
+      }
+
+      if (prevRecordData.file_url) {
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(120, 120, 120);
+        doc.text(`Digital Report Available: ${prevRecordData.file_url}`, M.left + 8, cursorY, { maxWidth: pageWidth - M.left - M.right - 16 });
+        cursorY += 15;
+      }
+
+      // Add separator line between historical results
+      doc.setDrawColor(200, 200, 200);
+      doc.setLineWidth(0.5);
+      doc.line(M.left + 8, cursorY, pageWidth - M.right - 8, cursorY);
+      cursorY += 20;
+
+      if (cursorY > pageHeight - M.bottom - 200) {
+        doc.addPage();
+        cursorY = M.top;
+      }
     }
-    doc.setGState(new (doc as any).GState({ opacity: 1 }));
   }
+
+  // --- Professional Conclusion Section ---
+  cursorY += 20;
+  doc.setFontSize(12);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(...primaryColor);
+  doc.text("Laboratory Report Summary", M.left, cursorY);
+  
+  cursorY += 15;
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(60, 60, 60);
+  
+  const summaryText = [
+    "• This laboratory report contains confidential medical information and should be handled with appropriate care.",
+    "• Results should be interpreted by a qualified healthcare professional in conjunction with clinical findings.",
+    "• Reference ranges may vary between laboratories and testing methods.",
+    "• For questions regarding these results, please contact your healthcare provider or our laboratory directly.",
+    "• This report is valid for medical decision-making purposes and meets clinical laboratory standards."
+  ];
+  
+  summaryText.forEach((text, index) => {
+    doc.text(text, M.left, cursorY + (index * 12));
+  });
+
+  drawWatermark(doc);
 
   const pdfBuffer = Buffer.from(doc.output("arraybuffer"));
   this.logger(`PDF generated for booking ID=${bookingId}`);
 
-  // Upload PDF to Cloudinary
   const uploaded = await new Promise<any>((resolve, reject) => {
+    const publicId = `${cleanTitle(body.title).replace(/\s+/g, "_")}_${bookingId}_${Date.now()}`;
     const stream = cloudinary.uploader.upload_stream(
-      { folder: "medical_records/results", resource_type: "raw", public_id: cleanTitle.replace(/\s+/g, "_"), format: "pdf" },
+      { folder: "medical_records/results", resource_type: "raw", public_id: publicId, format: "pdf" },
       (error, result) => (error ? reject(error) : resolve(result))
     );
     const readable = new Readable();
@@ -367,51 +669,45 @@ async uploadResult(
     readable.push(null);
     readable.pipe(stream);
   });
-  this.logger(`Report uploaded to Cloudinary: ${uploaded.secure_url}`);
+  this.logger(`Report uploaded to Cloudinary: ${uploaded?.secure_url || "no-url"}`);
 
-  // Insert into DB
-  const { data, error } = await this.supabase.from("medical_records").insert([
-    {
-      results: JSON.stringify(body.resultData, null, 2),
-      booked_test_id: bookingId,
-      patient_id: patientId,
-      title: cleanTitle,
-      record_type: "report",
-      date: new Date().toISOString(),
-      file_url: uploaded.secure_url,
-      doctor_name: body.doctor_name,
-    },
-  ]);
-  if (error) throw new Error(error.message);
-  this.logger(`Medical record inserted for booking ID=${bookingId}`);
-
-  // Fire-and-forget: update status
-  (async () => {
-    await this.supabase.from("booked_lab_tests").update({ status: "completed" }).eq("id", bookingId);
-    this.logger(`Booking status updated to completed for ID=${bookingId}`);
-  })();
-
-  // Send email (in main flow, safe)
-  if (patient?.email) {
-    await this.sendEmail(
-      patient.email,
-      "Lab Report Available",
-      `Your lab report "${cleanTitle}" for booking ID ${bookingId} is now available.`
-    );
-    this.logger(`Email sent to patient ${patient.email}`);
-  }
-
-  return {
+  const insertPayload = {
     results: JSON.stringify(body.resultData, null, 2),
     booked_test_id: bookingId,
     patient_id: patientId,
-    title: cleanTitle,
+    title: cleanTitle(body.title),
     record_type: "report",
     date: new Date().toISOString(),
-    file_url: uploaded.secure_url,
+    file_url: uploaded?.secure_url || null,
     doctor_name: body.doctor_name,
   };
+
+  const { data, error } = await this.supabase.from("medical_records").insert([insertPayload]);
+  if (error) throw new Error(error.message);
+  this.logger(`Medical record inserted for booking ID=${bookingId}`);
+
+  await this.supabase.from("booked_lab_tests").update({ status: "completed" }).eq("id", bookingId);
+  this.logger(`Booking status updated to completed for ID=${bookingId}`);
+
+  if (patientRow?.email) {
+    await this.sendEmail(
+      patientRow.email,
+      "Lab Report Available",
+      `Your lab report "${cleanTitle(body.title)}" for booking ID ${bookingId} is now available.`
+    );
+    this.logger(`Email sent to patient ${patientRow.email}`);
+  }
+
+  return {
+    ...insertPayload,
+    file_url: uploaded?.secure_url || null,
+  };
+
+  function cleanTitle(t: string) {
+    return (t || "Lab Report").replace(/[-_]?results\.json$/i, "").replace(/\.json$/i, "").trim();
+  }
 }
+
 
 
 
