@@ -241,8 +241,8 @@ async uploadResult(
 
   const pageWidth = 595.28;
   const pageHeight = 841.89;
-  const primaryColor: [number, number, number] = [0, 131, 150];
-  const grayText: [number, number, number] = [60, 60, 60];
+  const primaryColor: [number, number, number] = [0, 102, 153];
+  const grayText: [number, number, number] = [80, 80, 80];
   const M = { left: 48, right: 48, top: 160, bottom: 72 };
   const headerHeight = 120;
 
@@ -309,82 +309,70 @@ async uploadResult(
 
   const drawHeader = (d: any) => {
     // Hospital logo and branding
-    if (logoDataUrl) d.addImage(logoDataUrl, "PNG", M.left, 44, 56, 56);
+    if (logoDataUrl) d.addImage(logoDataUrl, "PNG", M.left, 44, 64, 64);
     
     // Hospital name and details
     d.setTextColor(...primaryColor);
     d.setFont("helvetica", "bold");
-    d.setFontSize(18);
-    d.text(hospitalName, M.left + 70, 60);
+    d.setFontSize(20);
+    d.text(hospitalName, M.left + 80, 64);
     d.setFont("helvetica", "normal");
-    d.setFontSize(12);
+    d.setFontSize(11);
     d.setTextColor(...grayText);
-    d.text(hospitalTagline, M.left + 70, 78);
-    d.setFontSize(10);
+    d.text(hospitalTagline, M.left + 80, 82);
+    d.setFontSize(9);
     d.setTextColor(80, 80, 80);
-    d.text(hospitalAddress, M.left + 70, 94);
-    d.text(hospitalContact, M.left + 70, 108);
+    d.text(hospitalAddress, M.left + 80, 96);
+    d.text(hospitalContact, M.left + 80, 110);
     
     // Report title and details
     d.setFont("helvetica", "bold");
-    d.setFontSize(20);
+    d.setFontSize(18);
     d.setTextColor(...primaryColor);
     d.text(cleanTitle(body.title || labTestRow?.name || "Laboratory Report"), pageWidth - M.right, 64, { align: "right" });
     d.setFont("helvetica", "normal");
-    d.setFontSize(11);
-    d.setTextColor(80, 80, 80);
-    d.text(`Report Date: ${dateStr}`, pageWidth - M.right, 80, { align: "right" });
-    d.text(`Generated: ${timeStr}`, pageWidth - M.right, 92, { align: "right" });
+    d.setFontSize(10);
+    d.setTextColor(110, 110, 110);
+    d.text(`Report Date: ${dateStr}`, pageWidth - M.right, 82, { align: "right" });
+    d.text(`Generated: ${timeStr}`, pageWidth - M.right, 96, { align: "right" });
     
     // Report ID
     d.setFontSize(9);
-    d.setTextColor(120, 120, 120);
-    d.text(`Report ID: ${bookingId.slice(0, 8).toUpperCase()}`, pageWidth - M.right, 108, { align: "right" });
+    d.setTextColor(140, 140, 140);
+    d.text(`Report ID: ${bookingId.slice(0, 8).toUpperCase()}`, pageWidth - M.right, 110, { align: "right" });
     
     // Professional separator line
     d.setDrawColor(...primaryColor);
-    d.setLineWidth(2);
+    d.setLineWidth(1.8);
     d.line(M.left, headerHeight, pageWidth - M.right, headerHeight);
   };
 
   const drawFooter = (d: any, pageNumber: number, pageCount: number) => {
-    d.setDrawColor(...primaryColor);
-    d.setLineWidth(2);
-    d.line(M.left, pageHeight - M.bottom, pageWidth - M.right, pageHeight - M.bottom);
-    
-    // Professional medical disclaimers
-    const disclaimer1 = "This laboratory report is confidential and intended solely for the patient and their healthcare provider.";
-    const disclaimer2 = "Results should be interpreted by a qualified medical professional. Normal ranges may vary by laboratory.";
-    const disclaimer3 = "This document is computer-generated and legally binding. Report ID: " + bookingId.slice(0, 8).toUpperCase();
-    
+    d.setDrawColor(220, 220, 220);
+    d.setLineWidth(1);
+    d.line(M.left, pageHeight - M.bottom - 8, pageWidth - M.right, pageHeight - M.bottom - 8);
+    const disclaimer = "This laboratory report is confidential and intended for the patient and authorized healthcare professionals. Results should be interpreted by a qualified clinician.";
     d.setFont("helvetica", "normal");
     d.setFontSize(8);
-    d.setTextColor(100, 100, 100);
-    
-    const wrapped1 = d.splitTextToSize(disclaimer1, pageWidth - M.left - M.right - 140);
-    d.text(wrapped1, M.left, pageHeight - M.bottom + 12);
-    
-    const wrapped2 = d.splitTextToSize(disclaimer2, pageWidth - M.left - M.right - 140);
-    d.text(wrapped2, M.left, pageHeight - M.bottom + 24);
-    
-    const wrapped3 = d.splitTextToSize(disclaimer3, pageWidth - M.left - M.right - 140);
-    d.text(wrapped3, M.left, pageHeight - M.bottom + 36);
-    
+    d.setTextColor(120, 120, 120);
+    const wrapped = d.splitTextToSize(disclaimer, pageWidth - M.left - M.right);
+    d.text(wrapped, M.left, pageHeight - M.bottom + 4);
     d.setFontSize(9);
+    d.setTextColor(100, 100, 100);
     d.text(`Page ${pageNumber} of ${pageCount}`, pageWidth / 2, pageHeight - 16, { align: "center" });
   };
 
   const drawWatermark = (d: any) => {
     if (!watermarkDataUrl) return;
     try {
-      // Create a much more subtle watermark
-      const wmW = pageWidth * 0.3;
-      const wmH = pageHeight * 0.3;
+      // Create a subtle watermark
+      const wmW = pageWidth * 0.28;
+      const wmH = pageHeight * 0.28;
       const x = (pageWidth - wmW) / 2;
       const y = (pageHeight - wmH) / 2;
       
-      // Apply very low opacity (0.03 = 3% opacity)
-      const gState = (d as any).GState ? (d as any).GState({ opacity: 0.03 }) : null;
+      // Apply very low opacity
+      const gState = (d as any).GState ? (d as any).GState({ opacity: 0.04 }) : null;
       if (gState && (d as any).setGState) {
         (d as any).setGState(gState);
         d.addImage(watermarkDataUrl, "PNG", x, y, wmW, wmH);
@@ -402,15 +390,15 @@ async uploadResult(
   const leftX = M.left;
   const rightX = pageWidth / 2 + 20;
 
-  // --- Patient Information Section ---
+  // --- Patient Information Section (compact 2-column) ---
   doc.setFont("helvetica", "bold");
   doc.setFontSize(13);
   doc.setTextColor(...primaryColor);
   doc.text("Patient Information", M.left, infoStartY - 16);
 
-  const patientInfoBody = [
+  const patientPairsSrc: [string, string][] = [
     ["Patient Name", patientProfileFromMongo?.name || "Not Available"],
-    ["Patient ID", patientId.slice(0, 8).toUpperCase()],
+    // Patient ID removed per request
     ["Email Address", patientRow?.email || "Not Available"],
     ["Contact Number", patientProfileFromMongo?.phone || "Not Available"],
     ["Date of Birth", patientProfileFromMongo?.dateOfBirth || "Not Available"],
@@ -424,14 +412,21 @@ async uploadResult(
     ["Medical Conditions", patientProfileFromMongo?.conditions || "None Reported"],
   ];
 
+  const patientInfoBodyPaired: any[] = [];
+  for (let i = 0; i < patientPairsSrc.length; i += 2) {
+    const a = patientPairsSrc[i];
+    const b = patientPairsSrc[i + 1];
+    patientInfoBodyPaired.push([a?.[0] || "", a?.[1] || "", b?.[0] || "", b?.[1] || ""]);
+  }
+
   autoTable(doc, {
     startY: infoStartY,
     theme: "grid",
-    styles: { fontSize: 11, cellPadding: 6 },
-    headStyles: { fillColor: primaryColor, textColor: [255, 255, 255] },
+    styles: { fontSize: 11, cellPadding: 6, valign: "middle" },
+    headStyles: { fillColor: primaryColor, textColor: [255, 255, 255], halign: "left" },
     margin: { top: M.top, bottom: M.bottom + 50, left: M.left, right: M.right },
-    head: [["Field", "Details"]],
-    body: patientInfoBody,
+    head: [["Field", "Details", "Field", "Details"]],
+    body: patientInfoBodyPaired,
     didDrawPage: () => {
       drawWatermark(doc);
       drawHeader(doc);
@@ -441,15 +436,15 @@ async uploadResult(
     },
   });
 
-  let cursorY = (doc as any).lastAutoTable.finalY + 30;
+  let cursorY = (doc as any).lastAutoTable.finalY + 28;
 
-  // --- Test Information Section ---
+  // --- Test Information Section (compact 2-column) ---
   doc.setFontSize(13);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(...primaryColor);
   doc.text("Test Information", M.left, cursorY - 10);
 
-  const testInfoBody = [
+  const testPairsSrc: [string, string][] = [
     ["Test Name", labTestRow?.name || body.title || "Laboratory Test"],
     ["Test Category", labTestRow?.category || "General"],
     ["Test Description", labTestRow?.description || "Diagnostic laboratory test"],
@@ -460,17 +455,23 @@ async uploadResult(
     ["Collection Time", bookedTest?.scheduled_time || "Not Available"],
     ["Collection Location", bookedTest?.location || "Main Laboratory"],
     ["Preparation Instructions", labTestRow?.preparation_instructions && Array.isArray(labTestRow.preparation_instructions) && labTestRow.preparation_instructions.length > 0 ? labTestRow.preparation_instructions.join("; ") : "Standard preparation"],
-    ["Special Instructions", bookedTest?.instructions && Array.isArray(bookedTest.instructions) && bookedTest.instructions.length > 0 ? bookedTest.instructions.join("; ") : "None"],
+    // Special Instructions removed per request
   ];
+  const testInfoBodyPaired: any[] = [];
+  for (let i = 0; i < testPairsSrc.length; i += 2) {
+    const a = testPairsSrc[i];
+    const b = testPairsSrc[i + 1];
+    testInfoBodyPaired.push([a?.[0] || "", a?.[1] || "", b?.[0] || "", b?.[1] || ""]);
+  }
 
   autoTable(doc, {
     startY: cursorY + 8,
     theme: "grid",
-    styles: { fontSize: 11, cellPadding: 6 },
-    headStyles: { fillColor: primaryColor, textColor: [255, 255, 255] },
+    styles: { fontSize: 11, cellPadding: 6, valign: "middle" },
+    headStyles: { fillColor: primaryColor, textColor: [255, 255, 255], halign: "left" },
     margin: { top: M.top, bottom: M.bottom + 50, left: M.left, right: M.right },
-    head: [["Field", "Details"]],
-    body: testInfoBody,
+    head: [["Field", "Details", "Field", "Details"]],
+    body: testInfoBodyPaired,
     didDrawPage: () => {
       drawWatermark(doc);
       drawHeader(doc);
@@ -480,7 +481,7 @@ async uploadResult(
     },
   });
 
-  cursorY = (doc as any).lastAutoTable.finalY + 30;
+  cursorY = (doc as any).lastAutoTable.finalY + 28;
 
   // --- Laboratory Results Section ---
   doc.setFontSize(14);
@@ -488,6 +489,42 @@ async uploadResult(
   doc.setTextColor(...primaryColor);
   doc.text("Laboratory Results", M.left, cursorY - 10);
   
+  function parseNumeric(v: any) {
+    if (v === null || v === undefined) return NaN;
+    if (typeof v === "number") return v;
+    const s = String(v).replace(/[,]/g, "").trim();
+    const m = s.match(/^-?\d+(\.\d+)?/);
+    return m ? Number(m[0]) : NaN;
+  }
+
+  function determineStatus(resultVal: any, reference: any) {
+    const numResult = parseNumeric(resultVal);
+    const ref = reference || labTestRow?.optimal_range;
+    if (!ref) return "Reported";
+    const rangeMatch = String(ref).match(/(-?\d+(\.\d+)?).*[-–to]+.*?(-?\d+(\.\d+)?)/i);
+    if (rangeMatch) {
+      const min = Number(rangeMatch[1]);
+      const max = Number(rangeMatch[3]);
+      if (!isNaN(numResult)) {
+        if (numResult < min) return "Low";
+        if (numResult > max) return "High";
+        return "Normal";
+      }
+    }
+    const singleMatch = String(ref).match(/(<=|≥|>=|≤|<|>)?\s*(-?\d+(\.\d+)?)/);
+    if (singleMatch && !isNaN(numResult)) {
+      const threshold = Number(singleMatch[2]);
+      const op = singleMatch[1] || "";
+      if (op.includes("<")) {
+        return numResult < threshold ? "Normal" : "High";
+      }
+      if (op.includes(">")) {
+        return numResult > threshold ? "Normal" : "Low";
+      }
+    }
+    return "Reported";
+  }
+
   if (!Array.isArray(body.resultData) || body.resultData.length === 0) {
     doc.setFontSize(11);
     doc.setFont("helvetica", "normal");
@@ -498,25 +535,57 @@ async uploadResult(
     // Add results summary
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
-    doc.setTextColor(80, 80, 80);
+    doc.setTextColor(100, 100, 100);
     doc.text(`Total Parameters Tested: ${body.resultData.length}`, M.left, cursorY + 5);
     doc.text(`Report Generated: ${dateStr} at ${timeStr}`, pageWidth - M.right, cursorY + 5, { align: "right" });
     
     autoTable(doc, {
-      startY: cursorY + 15,
+      startY: cursorY + 18,
       head: [["Parameter", "Result", "Reference Range", "Unit", "Status"]],
-      body: body.resultData.map((row: any) => [
-        row.test ?? "N/A", 
-        row.result ?? "N/A", 
-        row.reference ?? "See lab notes", 
-        row.unit ?? "N/A",
-        "Normal" // You can add logic here to determine if result is normal/abnormal
-      ]),
+      body: body.resultData.map((row: any) => {
+        const status = determineStatus(row.result, row.reference);
+        return [
+          row.test ?? "N/A",
+          row.result ?? "N/A",
+          row.reference ?? "See lab notes",
+          row.unit ?? "N/A",
+          status,
+        ];
+      }),
       theme: "grid",
-      styles: { fontSize: 10, cellPadding: 6 },
+      styles: { fontSize: 10, cellPadding: 6, valign: "middle" },
       headStyles: { fillColor: primaryColor, textColor: [255, 255, 255] },
       alternateRowStyles: { fillColor: [248, 248, 248] },
-      margin: { top: M.top, bottom: M.bottom + 50, left: M.left, right: M.right },
+      columnStyles: {
+        0: { cellWidth: 160 },
+        1: { cellWidth: 90 },
+        2: { cellWidth: 120 },
+        3: { cellWidth: 60 },
+        4: { cellWidth: 80 },
+      },
+      didParseCell: function (data: any) {
+        if (data.column.index === 4) {
+          if (data.cell.raw === "High") {
+            data.cell.styles.textColor = [189, 45, 45];
+            data.cell.styles.fontStyle = "bold";
+          } else if (data.cell.raw === "Low") {
+            data.cell.styles.textColor = [204, 102, 0];
+            data.cell.styles.fontStyle = "bold";
+          } else if (data.cell.raw === "Normal") {
+            data.cell.styles.textColor = [34, 139, 34];
+          } else {
+            data.cell.styles.textColor = [80, 80, 80];
+          }
+        }
+        if (data.column.index === 1) {
+          // Color the result cell itself based on status
+          const rowStatus = data.row.raw?.[4];
+          if (rowStatus === "High") data.cell.styles.textColor = [189, 45, 45];
+          else if (rowStatus === "Low") data.cell.styles.textColor = [204, 102, 0];
+          else if (rowStatus === "Normal") data.cell.styles.textColor = [34, 139, 34];
+        }
+      },
+      margin: { top: M.top, bottom: M.bottom + 80, left: M.left, right: M.right },
       didDrawPage: () => {
         drawWatermark(doc);
         drawHeader(doc);
@@ -536,19 +605,17 @@ async uploadResult(
   const { data: prevBookings } = await prevBookingsQuery;
 
   if (Array.isArray(prevBookings) && prevBookings.length > 0) {
-    cursorY += 15;
+    // Start previous results on a new page for clean layout
+    doc.addPage();
+    cursorY = M.top;
+    // Heading for previous results (left aligned)
     doc.setFontSize(14);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(...primaryColor);
-    doc.text("Historical Test Results", M.left, cursorY - 10);
-    
-    // Add summary
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(80, 80, 80);
-    doc.text(`Previous tests found: ${prevBookings.length}`, M.left, cursorY + 5);
-    cursorY += 20;
-
+    doc.text("Previous Results", M.left, cursorY - 10);
+    cursorY += 6;
+    // Consolidate all previous results into a single table (no heading/URLs)
+    const consolidatedRows: any[] = [];
     for (const pb of prevBookings) {
       const { data: prevRecordData } = await this.supabase
         .from("medical_records")
@@ -561,18 +628,6 @@ async uploadResult(
       if (!prevRecordData) continue;
 
       const prevDate = prevRecordData.date ? new Date(prevRecordData.date).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "-";
-      doc.setFontSize(12);
-      doc.setFont("helvetica", "bold");
-      doc.setTextColor(...primaryColor);
-      doc.text(`${prevRecordData.title || "Previous Laboratory Report"}`, M.left, cursorY);
-      doc.setFontSize(10);
-      doc.setFont("helvetica", "normal");
-      doc.setTextColor(80, 80, 80);
-      doc.text(`Test Date: ${prevDate}`, M.left, cursorY + 12);
-      if (prevRecordData.doctor_name) {
-        doc.text(`Reviewed by: Dr. ${prevRecordData.doctor_name}`, M.left, cursorY + 24);
-      }
-      cursorY += 35;
 
       let parsedResults: any[] = [];
       try {
@@ -582,51 +637,77 @@ async uploadResult(
       }
 
       if (parsedResults && parsedResults.length > 0) {
-        autoTable(doc, {
-          startY: cursorY,
-          head: [["Parameter", "Result", "Reference Range", "Unit"]],
-          body: parsedResults.map(r => [r.test ?? "N/A", r.result ?? "N/A", r.reference ?? "See notes", r.unit ?? "N/A"]),
-          theme: "grid",
-          styles: { fontSize: 9, cellPadding: 5 },
-          headStyles: { fillColor: [200, 200, 200], textColor: [40, 40, 40] },
-          alternateRowStyles: { fillColor: [252, 252, 252] },
-          margin: { top: M.top, bottom: M.bottom + 50, left: M.left + 8, right: M.right + 8 },
-          didDrawPage: () => {
-            drawWatermark(doc);
-            drawHeader(doc);
-            const pageNumber = (doc as any).internal.getCurrentPageInfo().pageNumber;
-            const pageCount = (doc as any).internal.getNumberOfPages();
-            drawFooter(doc, pageNumber, pageCount);
-          },
+        parsedResults.forEach(r => {
+          const status = determineStatus(r.result, r.reference);
+          consolidatedRows.push([
+            prevDate,
+            prevRecordData.title || "Previous Laboratory Report",
+            r.test ?? "N/A",
+            r.result ?? "N/A",
+            r.reference ?? "See notes",
+            r.unit ?? "N/A",
+            status,
+          ]);
         });
-        cursorY = (doc as any).lastAutoTable.finalY + 15;
-      } else {
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(10);
-        doc.setTextColor(100, 100, 100);
-        doc.text("No detailed laboratory results available for this historical test.", M.left + 8, cursorY);
-        cursorY += 20;
-      }
-
-      if (prevRecordData.file_url) {
-        doc.setFontSize(9);
-        doc.setFont("helvetica", "normal");
-        doc.setTextColor(120, 120, 120);
-        doc.text(`Digital Report Available: ${prevRecordData.file_url}`, M.left + 8, cursorY, { maxWidth: pageWidth - M.left - M.right - 16 });
-        cursorY += 15;
-      }
-
-      // Add separator line between historical results
-      doc.setDrawColor(200, 200, 200);
-      doc.setLineWidth(0.5);
-      doc.line(M.left + 8, cursorY, pageWidth - M.right - 8, cursorY);
-      cursorY += 20;
-
-      if (cursorY > pageHeight - M.bottom - 200) {
-        doc.addPage();
-        cursorY = M.top;
       }
     }
+
+    if (consolidatedRows.length > 0) {
+      const simplifiedRows = consolidatedRows.map(r => [
+        r[0], // Date
+        r[1], // Report title
+        r[3], // Result
+        r[6], // Status
+      ]);
+    
+      autoTable(doc, {
+        startY: cursorY,
+        head: [["Date", "Report", "Result", "Status"]],
+        body: simplifiedRows,
+        theme: "grid",
+        styles: { fontSize: 9, cellPadding: 5, valign: "middle" },
+        headStyles: { fillColor: [200, 200, 200], textColor: [40, 40, 40], halign: "left" },
+        alternateRowStyles: { fillColor: [252, 252, 252] },
+        columnStyles: {
+          0: { cellWidth: 80 },
+          1: { cellWidth: 200 },
+          2: { cellWidth: 100 },
+          3: { cellWidth: 80 },
+        },
+        margin: { top: M.top, bottom: M.bottom + 50, left: M.left, right: M.right },
+        didParseCell(data: any) {
+          if (data.column.index === 3) {
+            const val = data.cell.raw;
+            if (val === "High") {
+              data.cell.styles.textColor = [189, 45, 45];
+              data.cell.styles.fontStyle = "bold";
+            } else if (val === "Low") {
+              data.cell.styles.textColor = [204, 102, 0];
+              data.cell.styles.fontStyle = "bold";
+            } else if (val === "Normal") {
+              data.cell.styles.textColor = [34, 139, 34];
+            } else {
+              data.cell.styles.textColor = [80, 80, 80];
+            }
+          }
+          if (data.column.index === 2) {
+            const status = data.row.raw?.[3];
+            if (status === "High") data.cell.styles.textColor = [189, 45, 45];
+            else if (status === "Low") data.cell.styles.textColor = [204, 102, 0];
+            else if (status === "Normal") data.cell.styles.textColor = [34, 139, 34];
+          }
+        },
+        didDrawPage: () => {
+          drawWatermark(doc);
+          drawHeader(doc);
+          const pageNumber = (doc as any).internal.getCurrentPageInfo().pageNumber;
+          const pageCount = (doc as any).internal.getNumberOfPages();
+          drawFooter(doc, pageNumber, pageCount);
+        },
+      });
+      cursorY = (doc as any).lastAutoTable.finalY + 12;
+    }
+    
   }
 
   // --- Professional Conclusion Section ---
@@ -645,8 +726,10 @@ async uploadResult(
     "• This laboratory report contains confidential medical information and should be handled with appropriate care.",
     "• Results should be interpreted by a qualified healthcare professional in conjunction with clinical findings.",
     "• Reference ranges may vary between laboratories and testing methods.",
+    "• This is a computer generated report; no physical signature is required.",
+    "• Values and reference ranges are verified by the laboratory’s quality controls.",
     "• For questions regarding these results, please contact your healthcare provider or our laboratory directly.",
-    "• This report is valid for medical decision-making purposes and meets clinical laboratory standards."
+    "• This report is valid for medical decision making purposes and meets clinical laboratory standards."
   ];
   
   summaryText.forEach((text, index) => {
@@ -671,6 +754,11 @@ async uploadResult(
   });
   this.logger(`Report uploaded to Cloudinary: ${uploaded?.secure_url || "no-url"}`);
 
+  const frontendDomain = "https://hygieia-frontend.vercel.app";
+  const viewUrl = uploaded?.secure_url
+    ? `${frontendDomain}/viewReport?fileUrl=${encodeURIComponent(uploaded.secure_url)}`
+    : `${frontendDomain}/viewReport?fileUrl=${encodeURIComponent(uploaded?.url || "")}`;
+
   const insertPayload = {
     results: JSON.stringify(body.resultData, null, 2),
     booked_test_id: bookingId,
@@ -678,7 +766,7 @@ async uploadResult(
     title: cleanTitle(body.title),
     record_type: "report",
     date: new Date().toISOString(),
-    file_url: uploaded?.secure_url || null,
+    file_url: viewUrl,
     doctor_name: body.doctor_name,
   };
 
@@ -693,14 +781,14 @@ async uploadResult(
     await this.sendEmail(
       patientRow.email,
       "Lab Report Available",
-      `Your lab report "${cleanTitle(body.title)}" for booking ID ${bookingId} is now available.`
+      `Your lab report "${cleanTitle(body.title)}" for booking ID ${bookingId} is now available. View it here: ${viewUrl}`
     );
     this.logger(`Email sent to patient ${patientRow.email}`);
   }
 
   return {
     ...insertPayload,
-    file_url: uploaded?.secure_url || null,
+    file_url: viewUrl,
   };
 
   function cleanTitle(t: string) {
