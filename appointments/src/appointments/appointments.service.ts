@@ -299,6 +299,7 @@ async findAll(query: {
       report: row.report ?? undefined,
       mode: row.mode as AppointmentMode,
       dataShared: row.data_shared,
+      start_link: row.start_link ?? undefined,
     }
   }).filter(Boolean) as any[]
 
