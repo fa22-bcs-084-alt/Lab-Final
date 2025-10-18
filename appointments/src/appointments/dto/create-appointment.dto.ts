@@ -35,4 +35,13 @@ export class CreateAppointmentDto {
 
   @IsBoolean()
   dataShared: boolean
+
+  @IsOptional()
+  @IsString()
+  link?: string
+
+  
+  @IsOptional()
+  @IsString()
+  googleEventId?: string
 }

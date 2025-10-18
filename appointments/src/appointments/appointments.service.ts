@@ -9,6 +9,8 @@ import { Profile, ProfileDocument } from './schema/patient.profile.schema'
 import { Model } from 'mongoose'
 import { CompleteNutritionistAppointmentDto } from './dto/complete-nutritionist-appointment.dto'
 import { NutritionistProfile, NutritionistProfileDocument } from './schema/nutritionist-profile.schema'
+import { MailerService } from '../mailer/mailer.service'
+import { createGoogleMeetLink } from 'src/utils/google-meet.util'
 
 type DbRow = {
   id: string
@@ -22,6 +24,8 @@ type DbRow = {
   report: string | null
   mode: string
   data_shared: boolean
+  link: string | null
+  google_event_id: string | null
   created_at: string
   updated_at: string
 }
@@ -38,16 +42,21 @@ type ApiRow = {
   report?: string | null
   mode: AppointmentMode
   dataShared: boolean
+  link?: string | null
+  googleEventId?: string | null
   createdAt: string
   updatedAt: string
 }
 
 @Injectable()
 export class AppointmentsService {
-  constructor(@Inject(SUPABASE) private readonly supabase: SupabaseClient,
- @InjectModel(Profile.name) private profileModel: Model<ProfileDocument>,
-  @InjectModel(NutritionistProfile.name) private nut: Model<NutritionistProfileDocument>
-) {}
+  constructor(
+    @Inject(SUPABASE) private readonly supabase: SupabaseClient,
+    @InjectModel(Profile.name) private profileModel: Model<ProfileDocument>,
+    @InjectModel(NutritionistProfile.name) private nut: Model<NutritionistProfileDocument>,
+    private readonly mailerService: MailerService,
+
+  ) {}
 
   private toApi(r: DbRow): ApiRow {
     return {
@@ -62,6 +71,8 @@ export class AppointmentsService {
       report: r.report,
       mode: r.mode as AppointmentMode,
       dataShared: r.data_shared,
+      link: r.link,
+      googleEventId: r.google_event_id,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
     }
@@ -79,20 +90,131 @@ export class AppointmentsService {
       report: dto.report ?? null,
       mode: dto.mode as string,
       data_shared: dto.dataShared as boolean,
+      link: dto.link ?? null,
+      google_event_id: dto.googleEventId ?? null,
     } as Partial<DbRow>
   }
 
   async create(dto: CreateAppointmentDto): Promise<ApiRow> {
     this.logger("Appointment creation called for patient id="+dto.patientId)
+    
+    // Generate Google Meet link if appointment mode is online
+    let meetLink: string | null = null
+    if (dto.mode === AppointmentMode.Online) {
+      // We'll generate the link after we have the appointment ID
+      // For now, we'll set it to null and update it after creation
+    }
+    
     const payload = this.toDb(dto)
     
     const { data, error } = await this.supabase.from('appointments').insert(payload).select().single()
     if (error) {
-      this.logger("APPOINTMENT CREATION ERROR OCCURED ERROR: "+error)
+      this.logger("APPOINTMENT CREATION ERROR OCCURED ERROR: "+error.message)
       throw new BadRequestException(error.message)
     }
-   this.logger("APPOINTMENT CREATED FOR PATIENT ID= "+payload.patient_id +" doctor id= "+payload.doctor_id +" at "+data.created_at)  
-    return this.toApi(data as DbRow)
+    
+    const appointmentData = data as DbRow
+    
+    // Generate Google Meet link if appointment mode is online
+    if (dto.mode === AppointmentMode.Online) {
+      try {
+        // Fetch patient and doctor details for meet link generation
+        const patient = await this.profileModel.findOne({ id: dto.patientId }).lean()
+        const doctor = await this.nut.findOne({ id: dto.doctorId }).lean()
+        
+        // Fetch patient and doctor emails from users table
+        const { data: patientUser, error: patientUserError } = await this.supabase
+          .from('users')
+          .select('email')
+          .eq('id', dto.patientId)
+          .single()
+        
+        const { data: doctorUser, error: doctorUserError } = await this.supabase
+          .from('users')
+          .select('email')
+          .eq('id', dto.doctorId)
+          .single()
+        
+        if (patient && doctor && patientUser?.email && doctorUser?.email) {
+          // Create real Google Meet link using Google Calendar API
+          const meetResult = await createGoogleMeetLink({
+            patientEmail: patientUser.email,
+            nutritionistEmail: doctorUser.email,
+            patientName: patient.name || 'Patient',
+            nutritionistName: doctor.name || 'Doctor',
+            appointmentDate: dto.date,
+            appointmentTime: dto.time,
+            appointmentId: appointmentData.id,
+            notes: dto.notes
+          })
+          
+          console.log("Meet Result=", meetResult.meetLink)
+          meetLink = meetResult.meetLink
+          
+          // Update the appointment with the meet link and Google event ID
+          const { error: updateError } = await this.supabase
+            .from('appointments')
+            .update({ 
+              link: meetLink,
+              google_event_id: meetResult.eventId
+            })
+            .eq('id', appointmentData.id)
+          
+          if (updateError) {
+            this.logger("ERROR UPDATING APPOINTMENT WITH MEET LINK: " + updateError.message)
+          } else {
+            appointmentData.link = meetLink
+            appointmentData.google_event_id = meetResult.eventId
+            this.logger("REAL GOOGLE MEET LINK GENERATED AND STORED: " + meetLink)
+            this.logger("GOOGLE EVENT ID: " + meetResult.eventId)
+          }
+        } else {
+          this.logger("COULD NOT CREATE MEET LINK - MISSING PATIENT/DOCTOR DATA OR EMAILS")
+          if (patientUserError) this.logger("PATIENT USER ERROR: " + patientUserError.message)
+          if (doctorUserError) this.logger("DOCTOR USER ERROR: " + doctorUserError.message)
+        }
+      } catch (error) {
+        this.logger("ERROR GENERATING REAL GOOGLE MEET LINK: " + error.message)
+        // Don't throw error, just log it - appointment creation should still succeed
+      }
+    }
+    
+    // Send confirmation email to patient
+    try {
+      const patient = await this.profileModel.findOne({ id: dto.patientId }).lean()
+      const doctor = await this.nut.findOne({ id: dto.doctorId }).lean()
+      
+      // Fetch patient email from users table
+      const { data: userData, error: userError } = await this.supabase
+        .from('users')
+        .select('email')
+        .eq('id', dto.patientId)
+        .single()
+      
+      if (patient && doctor && userData?.email) {
+        await this.mailerService.sendAppointmentConfirmation(
+          userData.email,
+          patient.name || 'Patient',
+          doctor.name || 'Doctor',
+          dto.date,
+          dto.time,
+          dto.mode,
+          meetLink || undefined
+        )
+        this.logger("APPOINTMENT CONFIRMATION EMAIL SENT TO: " + userData.email)
+      } else {
+        this.logger("COULD NOT SEND EMAIL - MISSING PATIENT/DOCTOR DATA OR EMAIL")
+        if (userError) {
+          this.logger("ERROR FETCHING USER EMAIL: " + userError.message)
+        }
+      }
+    } catch (error) {
+      this.logger("ERROR SENDING APPOINTMENT CONFIRMATION EMAIL: " + error.message)
+      // Don't throw error, just log it - appointment creation should still succeed
+    }
+    
+    this.logger("APPOINTMENT CREATED FOR PATIENT ID= "+payload.patient_id +" doctor id= "+payload.doctor_id +" at "+data.created_at)  
+    return this.toApi(appointmentData)
   }
 
 async findAll(query: {
