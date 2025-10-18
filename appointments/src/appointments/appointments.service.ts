@@ -10,7 +10,6 @@ import { Model } from 'mongoose'
 import { CompleteNutritionistAppointmentDto } from './dto/complete-nutritionist-appointment.dto'
 import { NutritionistProfile, NutritionistProfileDocument } from './schema/nutritionist-profile.schema'
 import { MailerService } from '../mailer/mailer.service'
-import { createGoogleMeetLink } from 'src/utils/google-meet.util'
 import { createZoomMeeting } from 'src/utils/zoom'
 
 type DbRow = {
@@ -26,7 +25,6 @@ type DbRow = {
   mode: string
   data_shared: boolean
   link: string | null
-  google_event_id: string | null
   created_at: string
   updated_at: string
 }
@@ -47,6 +45,36 @@ type ApiRow = {
   googleEventId?: string | null
   createdAt: string
   updatedAt: string
+}
+
+
+type AppointmentWithDietPlan ={
+  id: string
+  date: string
+  time: string
+  status: string
+  type: string
+  notes?: string
+  report?: string
+  mode: string
+  data_shared: boolean
+  created_at: string
+  updated_at: string
+  diet_plan_id?: string
+  diet_plan?: {
+    id: string
+    daily_calories: string
+    protein: string
+    carbs: string
+    fat: string
+    deficiency: string
+    notes?: string
+    calories_burned: string
+    exercise: string
+    start_date?: string
+    end_date?: string
+    created_at: string
+  }[]
 }
 
 @Injectable()
@@ -73,7 +101,6 @@ export class AppointmentsService {
       mode: r.mode as AppointmentMode,
       dataShared: r.data_shared,
       link: r.link,
-      googleEventId: r.google_event_id,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
     }
@@ -167,7 +194,7 @@ export class AppointmentsService {
             this.logger("ERROR UPDATING APPOINTMENT WITH MEET LINK: " + updateError.message)
           } else {
             appointmentData.link = meetLink
-            appointmentData.google_event_id = meetResult.meetingId  
+           
             this.logger("REAL ZOOM MEET LINK GENERATED AND STORED: " + meetLink)
             this.logger("ZOOM MEETING ID: " + meetResult.meetingId)
           }
@@ -336,7 +363,7 @@ async completeNutritionistAppointment(
   dto: CompleteNutritionistAppointmentDto,
   nutritionistId: string
 ): Promise<ApiRow> {
-  this.logger(" COMPLETE NUTRITIONIST APPOINTMENT CALLED FOR NUTRITIONIST ID= "+nutritionistId)
+  this.logger("COMPLETE NUTRITIONIST APPOINTMENT CALLED FOR NUTRITIONIST ID=" + nutritionistId)
   
   const { data: appointment, error } = await this.supabase
     .from('appointments')
@@ -348,6 +375,7 @@ async completeNutritionistAppointment(
   if (error) throw new BadRequestException(error.message)
 
   const appt = appointment as DbRow
+  let dietPlanId: string | null = null
 
   const tasks: Promise<any>[] = []
 
@@ -357,32 +385,40 @@ async completeNutritionistAppointment(
       patient_id: appt.patient_id,
       referrer_id: nutritionistId,
     }))
-    this.logger("NUTRITIONIST REFERRED TOTAL "+inserts.length+" TEST(s)")
-    tasks.push(this.supabase.from('referred_tests').insert(inserts).then(r => r) as any) // <-- wrap as Promise
+    this.logger("NUTRITIONIST REFERRED TOTAL " + inserts.length + " TEST(s)")
+    tasks.push(this.supabase.from('referred_tests').insert(inserts).then(r => r) as any)
   }
 
   if (dto.dietPlan) {
-    const dietInsert = this.supabase.from('diet_plan').insert({
-      patient_id: appt.patient_id,
-      nutritionist_id: nutritionistId,
-      daily_calories: dto.dietPlan.dailyCalories,
-      protein: dto.dietPlan.protein,
-      carbs: dto.dietPlan.carbs,
-      fat: dto.dietPlan.fat,
-      deficiency: dto.dietPlan.deficiency,
-      notes: dto.dietPlan.notes ?? null,
-      calories_burned: dto.dietPlan.caloriesBurned,
-      exercise: dto.dietPlan.exercise,
-      start_date: dto.dietPlan.startDate ?? null,
-      end_date: dto.dietPlan.endDate ?? null,
-    }).then(r => r) // <-- wrap as Promise
-    tasks.push(dietInsert as any)
+    const dietInsert = await this.supabase
+      .from('diet_plan')
+      .insert({
+        patient_id: appt.patient_id,
+        nutritionist_id: nutritionistId,
+        daily_calories: dto.dietPlan.dailyCalories,
+        protein: dto.dietPlan.protein,
+        carbs: dto.dietPlan.carbs,
+        fat: dto.dietPlan.fat,
+        deficiency: dto.dietPlan.deficiency,
+        notes: dto.dietPlan.notes ?? null,
+        calories_burned: dto.dietPlan.caloriesBurned,
+        exercise: dto.dietPlan.exercise,
+        start_date: dto.dietPlan.startDate ?? null,
+        end_date: dto.dietPlan.endDate ?? null,
+      })
+      .select('id')
+      .single()
+
+    if (dietInsert.error) throw new BadRequestException(dietInsert.error.message)
+    dietPlanId = dietInsert.data.id
   }
 
-  const results = await Promise.all(tasks)
-  results.forEach((res) => {
-    if (res.error) throw new BadRequestException(res.error.message)
-  })
+  if (tasks.length) {
+    const results = await Promise.all(tasks)
+    results.forEach((res) => {
+      if (res.error) throw new BadRequestException(res.error.message)
+    })
+  }
 
   this.logger("REFERRED ALL TEST(s) AND/OR DIET PLAN ASSIGNED TO THE PATIENT")
 
@@ -392,6 +428,7 @@ async completeNutritionistAppointment(
       status: 'completed',
       report: dto.report ?? appt.report,
       updated_at: new Date().toISOString(),
+      diet_plan_id: dietPlanId ?? null,
     })
     .eq('id', id)
     .select()
@@ -399,10 +436,11 @@ async completeNutritionistAppointment(
 
   if (updateErr) throw new BadRequestException(updateErr.message)
   
-  this.logger("APPOINTMENT STATUS UPDATED FOR THE PATIENT")
+  this.logger("APPOINTMENT STATUS UPDATED AND LINKED TO DIET PLAN (IF ANY)")
 
   return this.toApi(updated as DbRow)
 }
+
 
 
 // Get all diet plans assigned by a nutritionist
@@ -620,6 +658,73 @@ async getAppointmentsForPatient(patientId: string) {
 }
 
 
+async getPreviousAppointmentsForPatient(
+  nutritionistId: string,
+  patientId: string
+): Promise<AppointmentWithDietPlan[]> {
+  this.logger(`FETCHING PREVIOUS APPOINTMENTS FOR NUTRITIONIST=${nutritionistId}, PATIENT=${patientId}`)
+
+  const { data: appointments, error: appointmentError } = await this.supabase
+    .from('appointments')
+    .select(`
+      id,
+      date,
+      time,
+      status,
+      type,
+      notes,
+      report,
+      mode,
+      data_shared,
+      created_at,
+      updated_at,
+      diet_plan_id
+    `)
+    .eq('doctor_id', nutritionistId)
+    .eq('patient_id', patientId)
+    .eq('status', 'completed')
+    .order('date', { ascending: false })
+
+  if (appointmentError) throw new BadRequestException(appointmentError.message)
+
+  const filteredAppointments: AppointmentWithDietPlan[] = []
+
+  for (const appt of appointments || []) {
+    if (!appt.diet_plan_id) continue
+
+    const { data: dietPlan, error: dietError } = await this.supabase
+      .from('diet_plan')
+      .select(`
+        id,
+        daily_calories,
+        protein,
+        carbs,
+        fat,
+        deficiency,
+        notes,
+        calories_burned,
+        exercise,
+        start_date,
+        end_date,
+        created_at
+      `)
+      .eq('id', appt.diet_plan_id)
+      .single()
+
+    if (dietError || !dietPlan) continue
+
+    filteredAppointments.push({
+      ...appt,
+      diet_plan: [dietPlan]
+    })
+  }
+
+  this.logger(`FETCHED ${filteredAppointments.length} APPOINTMENT(s) WITH DIET PLANS FOR PATIENT=${patientId}`)
+
+  return filteredAppointments
+}
+
+
 
 
 
@@ -697,6 +802,9 @@ async getAvailableSlots(providerId: string, role: string, date: string) {
     availableSlots: slots,
   }
 }
+
+
+
 
 
 

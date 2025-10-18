@@ -86,5 +86,15 @@ getAvailableSlots(@Payload() payload:AvailableSlotsQueryDto) {
 }
 
 
+  @MessagePattern({ cmd: 'get_previous_appointments' })
+  async getPreviousAppointments(
+    @Payload() { nutritionistId, patientId }: { nutritionistId: string; patientId: string },
+  ) {
+    return this.svc.getPreviousAppointmentsForPatient(
+      nutritionistId,
+      patientId
+    )
+  }
+
 
 }

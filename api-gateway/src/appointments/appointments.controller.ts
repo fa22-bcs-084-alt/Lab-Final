@@ -89,8 +89,13 @@ async getAvailableSlots(@Query() query: AvailableSlotsQueryDto) {
   }
 
    
-  
-
+  @Get('previous/:nutritionistId/:patientId')
+  async getPreviousAppointments(
+    @Param('nutritionistId') nutritionistId: string,
+    @Param('patientId') patientId: string
+  ) {
+    return this.client.send({ cmd: 'get_previous_appointments' }, { nutritionistId, patientId })
+  }
 
 
 
