@@ -11,6 +11,7 @@ import { CompleteNutritionistAppointmentDto } from './dto/complete-nutritionist-
 import { NutritionistProfile, NutritionistProfileDocument } from './schema/nutritionist-profile.schema'
 import { MailerService } from '../mailer/mailer.service'
 import { createGoogleMeetLink } from 'src/utils/google-meet.util'
+import { createZoomMeeting } from 'src/utils/zoom'
 
 type DbRow = {
   id: string
@@ -91,7 +92,7 @@ export class AppointmentsService {
       mode: dto.mode as string,
       data_shared: dto.dataShared as boolean,
       link: dto.link ?? null,
-      google_event_id: dto.googleEventId ?? null,
+    //  google_event_id: dto.googleEventId ?? null,
     } as Partial<DbRow>
   }
 
@@ -136,8 +137,8 @@ export class AppointmentsService {
           .single()
         
         if (patient && doctor && patientUser?.email && doctorUser?.email) {
-          // Create real Google Meet link using Google Calendar API
-          const meetResult = await createGoogleMeetLink({
+        
+          const meetResult = await createZoomMeeting({
             patientEmail: patientUser.email,
             nutritionistEmail: doctorUser.email,
             patientName: patient.name || 'Patient',
@@ -148,15 +149,17 @@ export class AppointmentsService {
             notes: dto.notes
           })
           
-          console.log("Meet Result=", meetResult.meetLink)
-          meetLink = meetResult.meetLink
-          
-          // Update the appointment with the meet link and Google event ID
+          console.log("Meet Result=", meetResult.joinLink)
+          console.log("Meet Result ID=", meetResult.meetingId)
+          console.log("Meet Result Start Link=", meetResult.startLink)
+          meetLink = meetResult.joinLink
+
+          // Update the appointment with the meet link and Zoom meeting ID
           const { error: updateError } = await this.supabase
             .from('appointments')
             .update({ 
               link: meetLink,
-              google_event_id: meetResult.eventId
+              start_link: meetResult.startLink
             })
             .eq('id', appointmentData.id)
           
@@ -164,9 +167,9 @@ export class AppointmentsService {
             this.logger("ERROR UPDATING APPOINTMENT WITH MEET LINK: " + updateError.message)
           } else {
             appointmentData.link = meetLink
-            appointmentData.google_event_id = meetResult.eventId
-            this.logger("REAL GOOGLE MEET LINK GENERATED AND STORED: " + meetLink)
-            this.logger("GOOGLE EVENT ID: " + meetResult.eventId)
+            appointmentData.google_event_id = meetResult.meetingId  
+            this.logger("REAL ZOOM MEET LINK GENERATED AND STORED: " + meetLink)
+            this.logger("ZOOM MEETING ID: " + meetResult.meetingId)
           }
         } else {
           this.logger("COULD NOT CREATE MEET LINK - MISSING PATIENT/DOCTOR DATA OR EMAILS")
