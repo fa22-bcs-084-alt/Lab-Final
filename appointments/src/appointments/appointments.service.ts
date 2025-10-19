@@ -211,8 +211,7 @@ export class AppointmentsService {
       }
     }
     
-     //rabbit mq - emit appointment created event
-    this.schedulerClient.emit('appointment_created', appointmentData);
+
 
 
     // Send confirmation email to patient
@@ -228,6 +227,21 @@ export class AppointmentsService {
         .single()
       
       if (patient && doctor && userData?.email) {
+
+
+
+        //rabbit mq - emit appointment created event
+        this.schedulerClient.emit('appointment_created', {
+          patient_id: dto.patientId,
+          doctor_id: dto.doctorId,
+          patient_email: userData.email,
+          patient_name: patient.name || 'Patient',
+          doctor_name: doctor.name || 'Doctor',
+          appointment_date: dto.date,
+          appointment_time: dto.time,
+          appointment_mode: dto.mode,
+          appointment_link: meetLink || undefined
+        });
         await this.mailerService.sendAppointmentConfirmation(
           userData.email,
           patient.name || 'Patient',

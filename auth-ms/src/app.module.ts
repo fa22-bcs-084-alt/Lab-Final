@@ -8,6 +8,7 @@ import { CvModule } from './cv/cv.module';
 import { BlogPostModule } from './blog-post/blog-post.module';
 import { BlogCategoryModule } from './blog-category/blog-category.module';
 import { NutritionistsModule } from './nutritionists/nutritionists.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { NutritionistsModule } from './nutritionists/nutritionists.module';
      BlogPostModule,
      BlogCategoryModule,
      NutritionistsModule,
+     NotificationsModule,
   ],
 })
 export class AppModule {}
