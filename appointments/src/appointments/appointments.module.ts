@@ -5,10 +5,22 @@ import { MongooseModule } from '@nestjs/mongoose'
 import { Profile,ProfileSchema } from './schema/patient.profile.schema'
 import { NutritionistProfile, NutritionistProfileSchema } from './schema/nutritionist-profile.schema'
 import { MailerModule } from '../mailer/mailer.module'
+import { ClientsModule, Transport } from '@nestjs/microservices'
 
 
 @Module({
     imports: [
+      ClientsModule.register([
+          {
+        name: 'SCHEDULER_SERVICE',
+        transport: Transport.RMQ,
+        options: {
+          urls: ['amqp://guest:guest@localhost:5672'],
+          queue: 'appointments_queue',
+          queueOptions: { durable: true },
+        },
+      },
+      ]),
       MongooseModule.forFeature([
         { name: Profile.name, schema: ProfileSchema },
         { name: NutritionistProfile.name, schema: NutritionistProfileSchema }

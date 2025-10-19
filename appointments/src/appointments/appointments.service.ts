@@ -11,6 +11,7 @@ import { CompleteNutritionistAppointmentDto } from './dto/complete-nutritionist-
 import { NutritionistProfile, NutritionistProfileDocument } from './schema/nutritionist-profile.schema'
 import { MailerService } from '../mailer/mailer.service'
 import { createZoomMeeting } from 'src/utils/zoom'
+import { ClientProxy } from '@nestjs/microservices'
 
 type DbRow = {
   id: string
@@ -83,6 +84,7 @@ export class AppointmentsService {
     @Inject(SUPABASE) private readonly supabase: SupabaseClient,
     @InjectModel(Profile.name) private profileModel: Model<ProfileDocument>,
     @InjectModel(NutritionistProfile.name) private nut: Model<NutritionistProfileDocument>,
+    @Inject('SCHEDULER_SERVICE') private readonly schedulerClient: ClientProxy,
     private readonly mailerService: MailerService,
 
   ) {}
@@ -209,6 +211,10 @@ export class AppointmentsService {
       }
     }
     
+     //rabbit mq - emit appointment created event
+    this.schedulerClient.emit('appointment_created', appointmentData);
+
+
     // Send confirmation email to patient
     try {
       const patient = await this.profileModel.findOne({ id: dto.patientId }).lean()
