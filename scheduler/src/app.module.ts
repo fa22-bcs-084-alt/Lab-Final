@@ -3,12 +3,22 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { SchedulerModule } from './scheduler/scheduler.module';
 import { ConfigModule } from '@nestjs/config/dist/config.module';
+import { ReminderModule } from './reminder/reminder.module';
+import { BullModule } from '@nestjs/bullmq'
 
 @Module({
   imports: [SchedulerModule,
      ConfigModule.forRoot({
-      isGlobal: true, // makes it available everywhere
+      isGlobal: true,
     }),
+     ReminderModule,
+      BullModule.forRoot({
+      connection: {
+        host: 'localhost', 
+        port: 6379,
+      },
+    }),
+  
   ],
   controllers: [AppController],
   providers: [AppService],
