@@ -19,6 +19,15 @@ import { ClientsModule, Transport } from '@nestjs/microservices'
           queue: 'appointments_queue',
           queueOptions: { durable: true },
         },
+      }, 
+       {
+        name: 'MAILER_SERVICE',
+        transport: Transport.RMQ,
+        options: {
+          urls: ['amqp://guest:guest@localhost:5672'],
+          queue: 'email_queue',
+          queueOptions: { durable: true },
+        },
       },
       ]),
       MongooseModule.forFeature([

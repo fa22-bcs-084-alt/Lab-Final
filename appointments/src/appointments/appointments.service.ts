@@ -85,6 +85,7 @@ export class AppointmentsService {
     @InjectModel(Profile.name) private profileModel: Model<ProfileDocument>,
     @InjectModel(NutritionistProfile.name) private nut: Model<NutritionistProfileDocument>,
     @Inject('SCHEDULER_SERVICE') private readonly schedulerClient: ClientProxy,
+    @Inject('MAILER_SERVICE') private readonly mailerClient: ClientProxy,
     private readonly mailerService: MailerService,
 
   ) {}
@@ -128,7 +129,7 @@ export class AppointmentsService {
   async create(dto: CreateAppointmentDto): Promise<ApiRow> {
     this.logger("Appointment creation called for patient id="+dto.patientId)
     
-    // Generate Google Meet link if appointment mode is online
+    // Generate Zoom link if appointment mode is online
     let meetLink: string | null = null
     if (dto.mode === AppointmentMode.Online) {
       // We'll generate the link after we have the appointment ID
@@ -145,10 +146,10 @@ export class AppointmentsService {
     
     const appointmentData = data as DbRow
     
-    // Generate Google Meet link if appointment mode is online
+    // Generate Zoom link if appointment mode is online
     if (dto.mode === AppointmentMode.Online) {
       try {
-        // Fetch patient and doctor details for meet link generation
+        // Fetch patient and doctor details for Zoom link generation
         const patient = await this.profileModel.findOne({ id: dto.patientId }).lean()
         const doctor = await this.nut.findOne({ id: dto.doctorId }).lean()
         
@@ -230,7 +231,7 @@ export class AppointmentsService {
 
 
 
-        //rabbit mq - emit appointment created event
+        //rabbit mq - emit appointment created event for scheduling
         this.schedulerClient.emit('appointment_created', {
           patient_id: dto.patientId,
           doctor_id: dto.doctorId,
@@ -240,18 +241,25 @@ export class AppointmentsService {
           appointment_date: dto.date,
           appointment_time: dto.time,
           appointment_mode: dto.mode,
-          appointment_link: meetLink || undefined
+          appointment_link: meetLink || undefined,
+          link: meetLink || undefined
         });
-        await this.mailerService.sendAppointmentConfirmation(
-          userData.email,
-          patient.name || 'Patient',
-          doctor.name || 'Doctor',
-          dto.date,
-          dto.time,
-          dto.mode,
-          meetLink || undefined
-        )
-        this.logger("APPOINTMENT CONFIRMATION EMAIL SENT TO: " + userData.email)
+
+        //rabbit mq - emit appointment created event for sending email
+        this.mailerClient.emit('appointment_created', {
+          patient_id: dto.patientId,
+          doctor_id: dto.doctorId,
+          patient_email: userData.email,
+          patient_name: patient.name || 'Patient',
+          doctor_name: doctor.name || 'Doctor',
+          appointment_date: dto.date,
+          appointment_time: dto.time,
+          appointment_mode: dto.mode,
+          appointment_link: meetLink || undefined,
+          link: meetLink || undefined
+        });
+
+        
       } else {
         this.logger("COULD NOT SEND EMAIL - MISSING PATIENT/DOCTOR DATA OR EMAIL")
         if (userError) {

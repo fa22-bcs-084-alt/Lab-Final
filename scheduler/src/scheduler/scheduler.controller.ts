@@ -8,7 +8,6 @@ export class SchedulerController {
 
   @MessagePattern('appointment_created')
   async handleAppointment(@Payload() data: any) {
-    console.log('New appointment received:', data)
     await this.schedulerService.handleAppointment(data)
   }
 }
