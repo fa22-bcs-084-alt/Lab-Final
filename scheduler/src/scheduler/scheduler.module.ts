@@ -7,7 +7,8 @@ import { BullModule } from '@nestjs/bullmq'
   imports: [  
     BullModule.registerQueue({
         name: 'appointment-schedules',
-      }),],
+      }),
+    ],
   controllers: [SchedulerController],
   providers: [SchedulerService],
 })

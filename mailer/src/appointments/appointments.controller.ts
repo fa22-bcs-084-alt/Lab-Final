@@ -11,6 +11,20 @@ export class AppointmentsController {
    await this.appointmentsService.handleAppointment(data)
     
   }
+
+  //handle cancel notification thing
+
+    @MessagePattern('thirty_min_reminder')
+  async handleThirtyMinAppointmentReminder(@Payload() data: any) {
+  // await this.appointmentsService.handleThirtyMinAppointmentReminder(data)
+
+  }
+
+    @MessagePattern('one_day_reminder')
+  async handleOneDayAppointmentReminder(@Payload() data: any) {
+   //await this.appointmentsService.handleOneDayAppointmentReminder(data)
+
+  }
 }
 
 

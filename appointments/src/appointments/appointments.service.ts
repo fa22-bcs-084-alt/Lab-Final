@@ -242,7 +242,7 @@ export class AppointmentsService {
           appointment_time: dto.time,
           appointment_mode: dto.mode,
           appointment_link: meetLink || undefined,
-          link: meetLink || undefined
+
         });
 
         //rabbit mq - emit appointment created event for sending email
@@ -256,7 +256,7 @@ export class AppointmentsService {
           appointment_time: dto.time,
           appointment_mode: dto.mode,
           appointment_link: meetLink || undefined,
-          link: meetLink || undefined
+        
         });
 
         

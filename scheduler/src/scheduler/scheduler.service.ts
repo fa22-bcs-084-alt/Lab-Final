@@ -15,11 +15,13 @@ export class SchedulerService {
 
 
 
-async handleAppointment(data: {patient_id: string, doctor_id: string, patient_name: string, doctor_name: string, appointment_date: string, appointment_time: string}) {
+
+async handleAppointment(data: {patient_id: string, doctor_id: string, patient_name: string, doctor_name: string, appointment_date: string, appointment_time: string, patient_email: string, appointment_link: string | null, appointment_mode: string}) {
   const { patient_id, doctor_id, patient_name, doctor_name, appointment_date, appointment_time } = data
 
   // ✅ Combine and treat as UTC
-    const appointmentDateTime = new Date(`${appointment_date}T${appointment_time}Z`)
+  console.log('Appointment Data:', data)
+    const appointmentDateTime = new Date(`${appointment_date.split('T')[0]}T${appointment_time}Z`)
     console.log('Appointment DateTime (UTC):', appointmentDateTime.toISOString())
 
     const now =  new Date(
@@ -49,8 +51,8 @@ async handleAppointment(data: {patient_id: string, doctor_id: string, patient_na
 
 
 
-  await this.createNotification(patient_id, `Your appointment with ${doctor_name} is booked for ${appointment_date} at ${appointment_time}`,'New Appointment Booked' )
-  await this.createNotification(doctor_id, `New appointment scheduled with ${patient_name} on ${appointment_date} at ${appointment_time}`,'New Appointment Booked' )
+  await this.createNotification(patient_id, `Your appointment with ${doctor_name} is booked for ${appointment_date.split('T')[0]} at ${appointment_time}`,'New Appointment Booked' )
+  await this.createNotification(doctor_id, `New appointment scheduled with ${patient_name} on ${appointment_date.split('T')[0]} at ${appointment_time}`,'New Appointment Booked' )
 }
 
 

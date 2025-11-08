@@ -8,7 +8,7 @@ export class AppointmentsService {
     constructor(private mailService: MailService) {}
 
 
-async handleAppointment(data: {patient_id: string, doctor_id: string, patient_name: string, doctor_name: string, appointment_date: string, appointment_time: string, patient_email: string, link: string | null,appointment_mode: string}) {
+async handleAppointment(data: {patient_id: string, doctor_id: string, patient_name: string, doctor_name: string, appointment_date: string, appointment_time: string, patient_email: string, appointment_link: string | null, appointment_mode: string}) {
         console.log('Handling appointment in AppointmentsService:', data);
         await this.mailService.sendMail(
             data.patient_email,
