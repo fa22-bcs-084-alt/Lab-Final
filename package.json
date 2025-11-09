@@ -3,9 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "devDependencies": {
-    "concurrently": "^9.0.0"
+    "mprocs": "^0.7.3"
   },
   "scripts": {
-    "start:dev": "concurrently \"npm run start:dev --prefix api-gateway\" \"npm run start:dev --prefix auth-ms\" \"npm run start:dev --prefix lab\" \"npm run start:dev --prefix fitness\" \"npm run start:dev --prefix appointments\""
-  }
+  "start:dev": "mprocs -c .mprocs.yml"
+}
+
+  
 }

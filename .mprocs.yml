@@ -1,0 +1,11 @@
+procs:
+  api-gateway:
+    shell: "npm run start:dev --prefix api-gateway"
+  auth-ms:
+    shell: "npm run start:dev --prefix auth-ms"
+  lab:
+    shell: "npm run start:dev --prefix lab"
+  fitness:
+    shell: "npm run start:dev --prefix fitness"
+  appointments:
+    shell: "npm run start:dev --prefix appointments"
