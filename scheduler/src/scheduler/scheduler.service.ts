@@ -3,6 +3,7 @@ import * as cron from 'node-cron'
 import { createClient } from '@supabase/supabase-js'
 import { InjectQueue } from '@nestjs/bullmq'
 import { Queue } from 'bullmq'
+import { AppointmentDto } from 'src/dto/appointment.dto'
 
 @Injectable()
 export class SchedulerService {
@@ -16,7 +17,7 @@ export class SchedulerService {
 
 
 
-async handleAppointment(data: {patient_id: string, doctor_id: string, patient_name: string, doctor_name: string, appointment_date: string, appointment_time: string, patient_email: string, appointment_link: string | null, appointment_mode: string}) {
+async handleAppointment(data:AppointmentDto) {
   const { patient_id, doctor_id, patient_name, doctor_name, appointment_date, appointment_time } = data
 
   // ✅ Combine and treat as UTC
@@ -55,18 +56,6 @@ async handleAppointment(data: {patient_id: string, doctor_id: string, patient_na
   await this.createNotification(doctor_id, `New appointment scheduled with ${patient_name} on ${appointment_date.split('T')[0]} at ${appointment_time}`,'New Appointment Booked' )
 }
 
-
-  private scheduleJob(date: Date, callback: () => void) {
-    const now = new Date()
-    if (date < now) {
-      this.logger.warn('Skipping past-due job: ' + date.toISOString())
-      return
-    }
-
-    const cronExpression = `${date.getUTCMinutes()} ${date.getUTCHours()} ${date.getUTCDate()} ${date.getUTCMonth() + 1} *`
-    cron.schedule(cronExpression, callback, {timezone: 'Asia/Karachi' })
-    this.logger.log(`Scheduled job at ${date.toISOString()}`)
-  }
 
   private async createNotification(userId: string, message: string,title?: string) {
     const { error } = await this.supabase.from('notifications').insert([

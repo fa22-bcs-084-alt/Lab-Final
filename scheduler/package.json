@@ -33,6 +33,7 @@
     "amqp-connection-manager": "^5.0.0",
     "amqplib": "^0.10.9",
     "bullmq": "^5.63.0",
+    "class-validator": "^0.14.2",
     "ioredis": "^5.8.2",
     "node-cron": "^4.2.1",
     "reflect-metadata": "^0.2.2",

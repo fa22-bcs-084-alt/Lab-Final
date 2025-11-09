@@ -1,5 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { generateAppointmentConfirmationEmail } from 'helpers/generateConfirmationEmail';
+import { generateAppointmentConfirmationEmail } from 'helpers/generateAppointmentConfirmationEmail'
+import { generateAppointmentReminder30MinEmail } from 'helpers/generateAppointmentReminder30MinEmail';
+import { generateAppointmentTomorrowEmail } from 'helpers/generateAppointmentTomorrowEmail';
+import { AppointmentDto } from 'src/dto/appointment.dto';
 import { MailService } from 'src/mail/mail.service';
 
 @Injectable()
@@ -8,7 +11,7 @@ export class AppointmentsService {
     constructor(private mailService: MailService) {}
 
 
-async handleAppointment(data: {patient_id: string, doctor_id: string, patient_name: string, doctor_name: string, appointment_date: string, appointment_time: string, patient_email: string, appointment_link: string | null, appointment_mode: string}) {
+async handleAppointment(data: AppointmentDto) {
         console.log('Handling appointment in AppointmentsService:', data);
         await this.mailService.sendMail(
             data.patient_email,
@@ -16,4 +19,22 @@ async handleAppointment(data: {patient_id: string, doctor_id: string, patient_na
             generateAppointmentConfirmationEmail(data)
         );
     }
+
+async handleThirtyMinAppointmentReminder(data: AppointmentDto) {
+   console.log('Handling appointment in AppointmentsService:', data);
+        await this.mailService.sendMail(
+            data.patient_email,
+            'Appointment Reminder - 30 Minutes',
+            generateAppointmentReminder30MinEmail(data)
+        );
+  }
+
+async handleOneDayAppointmentReminder(data: AppointmentDto) {
+   console.log('Handling appointment in AppointmentsService:', data);
+        await this.mailService.sendMail(
+            data.patient_email,
+            'Appointment Reminder - 1 Day',
+            generateAppointmentTomorrowEmail(data)
+        );
+  }
 }

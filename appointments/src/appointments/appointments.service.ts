@@ -12,6 +12,7 @@ import { NutritionistProfile, NutritionistProfileDocument } from './schema/nutri
 import { MailerService } from '../mailer/mailer.service'
 import { createZoomMeeting } from 'src/utils/zoom'
 import { ClientProxy } from '@nestjs/microservices'
+import { AppointmentMQDto } from './dto/appointmentMQ.dto'
 
 type DbRow = {
   id: string
@@ -233,6 +234,7 @@ export class AppointmentsService {
 
         //rabbit mq - emit appointment created event for scheduling
         this.schedulerClient.emit('appointment_created', {
+          appointment_id: appointmentData.id,
           patient_id: dto.patientId,
           doctor_id: dto.doctorId,
           patient_email: userData.email,
@@ -243,10 +245,11 @@ export class AppointmentsService {
           appointment_mode: dto.mode,
           appointment_link: meetLink || undefined,
 
-        });
+        } as AppointmentMQDto);
 
         //rabbit mq - emit appointment created event for sending email
         this.mailerClient.emit('appointment_created', {
+          appointment_id: appointmentData.id,
           patient_id: dto.patientId,
           doctor_id: dto.doctorId,
           patient_email: userData.email,
@@ -257,7 +260,7 @@ export class AppointmentsService {
           appointment_mode: dto.mode,
           appointment_link: meetLink || undefined,
         
-        });
+        } as AppointmentMQDto );
 
         
       } else {
