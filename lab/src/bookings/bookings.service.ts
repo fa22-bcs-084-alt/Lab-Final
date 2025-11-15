@@ -146,83 +146,464 @@ async bookTest(data: {
 }
 
 
+
 async uploadScan(
   bookingId: string,
   fileBuffer: Buffer | Uint8Array,
   fileName: string,
   doctor_name?: string
 ) {
-  this.logger(`Starting upload for booking ID=${bookingId}`);
+  this.logger(`Starting scan PDF generation for booking ID=${bookingId}`);
 
-  const patientIdPromise = this.supabase
-    .from('booked_lab_tests')
-    .select('patient_id')
-    .eq('id', bookingId)
-    .single()
-    .then(res => res.data?.patient_id);
+  // ====== CONSTANTS (same as uploadResult) ======
+  const pageWidth = 595.28;
+  const pageHeight = 841.89;
+  const primaryColor: [number, number, number] = [0, 102, 153];
+  const grayText: [number, number, number] = [80, 80, 80];
+  const M = { left: 48, right: 48, top: 160, bottom: 72 };
+  const headerHeight = 120;
 
-  const uploaded = await new Promise<any>((resolve, reject) => {
-    const uploadStream = cloudinary.uploader.upload_stream(
-      { folder: 'medical_records/scans', resource_type: 'auto' },
-      (error, result) => (error ? reject(error) : resolve(result))
-    );
-
-    if (Buffer.isBuffer(fileBuffer) || fileBuffer instanceof Uint8Array) {
-      uploadStream.end(fileBuffer);
-    } else {
-      reject(new Error('fileBuffer must be a Buffer or Uint8Array'));
-    }
+  const now = new Date();
+  const dateStr = now.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+  const timeStr = now.toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
   });
 
-  this.logger(`File uploaded to Cloudinary: ${uploaded.secure_url}`);
+  const hospitalName = "Hygieia";
+  const hospitalTagline = "From Past to Future of Healthcare";
+  const hospitalAddress = "www.hygieia-frontend.vercel.app";
+  const hospitalContact = "+92 80 1234 5678 • hygieia.fyp@gmail.com";
 
-  const patientId = await patientIdPromise;
-  if (!patientId) throw new Error('Patient ID not found for booking');
+  const doc = new jsPDF({ unit: "pt", format: "a4" });
 
-  // Insert medical record
-  const { data, error } = await this.supabase.from('medical_records').insert([
-    {
-      booked_test_id: bookingId,
-      patient_id: patientId,
-      title: 'Lab Scan',
-      record_type: 'scan',
-      date: new Date().toISOString(),
-      file_url: uploaded.secure_url,
-      doctor_name,
-    },
-  ]);
-
-  if (error) throw new Error(error.message);
-  this.logger(`Medical record inserted for booking ID=${bookingId}`);
-
-  // Fire-and-forget: update booking status and send email in parallel
-  const updateAndNotify = async () => {
-    this.logger(`Updating booking status to completed for ID=${bookingId}`);
-    await this.supabase
-      .from('booked_lab_tests')
-      .update({ status: 'completed' })
-      .eq('id', bookingId);
-
-    this.logger(`Fetching patient email for ID=${patientId}`);
-    const { data: patient } = await this.supabase
-      .from('users')
-      .select('email')
-      .eq('id', patientId)
-      .single();
-
-    if (patient?.email) {
-      this.logger(`Sending email to ${patient.email}`);
-      await this.sendEmail(
-        patient.email,
-        'Lab Scan Available',
-        `Your lab scan for booking ID ${bookingId} is now available.`
-      );
-    }
+  // ====== LOAD LOGO + WATERMARK ======
+  this.logger(`Loading logo and watermark assets`);
+  const loadBase64 = (fileName: string) => {
+    const abs = path.resolve(process.cwd(), "src", "assets", fileName);
+    const file = fs.readFileSync(abs);
+    return `data:image/png;base64,${file.toString("base64")}`;
   };
 
-  updateAndNotify(); // fire-and-forget
+  let logoDataUrl ;
+  let watermarkDataUrl ;
+  try {
+    logoDataUrl = loadBase64("logo.png");
+    this.logger(`Logo loaded successfully`);
+  } catch (e) {
+    this.logger(`Failed to load logo: ${e}`);
+  }
+  try {
+    watermarkDataUrl = loadBase64("logo-2.png");
+    this.logger(`Watermark loaded successfully`);
+  } catch (e) {
+    this.logger(`Failed to load watermark: ${e}`);
+  }
 
-  return data;
+  // ====== FETCH BOOKING, PATIENT, TEST DATA ======
+  this.logger(`Fetching booking details from database`);
+  const { data: booking } = await this.supabase
+    .from("booked_lab_tests")
+    .select(
+      "patient_id,test_id,scheduled_date,scheduled_time,location,instructions"
+    )
+    .eq("id", bookingId)
+    .single();
+
+  if (!booking?.patient_id) throw new Error("Booking not found");
+  this.logger(`Booking found - Patient ID: ${booking.patient_id}, Test ID: ${booking.test_id}`);
+
+  const patientId = booking.patient_id;
+  const testId = booking.test_id;
+
+  this.logger(`Fetching test details for test ID: ${testId}`);
+  const { data: testDetails } = await this.supabase
+    .from("lab_tests")
+    .select(
+      "name,description,category,price,duration,preparation_instructions,record_type"
+    )
+    .eq("id", testId)
+    .single();
+  this.logger(`Test details retrieved: ${testDetails?.name || 'Unknown'}`);
+
+  this.logger(`Fetching patient email for patient ID: ${patientId}`);
+  const { data: patientRow } = await this.supabase
+    .from("users")
+    .select("email")
+    .eq("id", patientId)
+    .single();
+  this.logger(`Patient email: ${patientRow?.email || 'Not found'}`);
+
+  // MongoDB patient profile
+  this.logger(`Fetching patient profile from MongoDB`);
+  let patientProfile: any = {};
+  try {
+    if ((this as any).profileModel) {
+      patientProfile = await (this as any).profileModel
+        .findOne({ id: patientId })
+        .lean()
+        .exec();
+      this.logger(`Patient profile retrieved: ${patientProfile?.name || 'Not found'}`);
+    }
+  } catch (e) {
+    this.logger(`Failed to fetch patient profile from MongoDB: ${e}`);
+  }
+
+  // ====== DRAW HEADER ======
+  const drawHeader = (d: any) => {
+    if (logoDataUrl) d.addImage(logoDataUrl, "PNG", M.left, 44, 64, 64);
+
+    d.setTextColor(...primaryColor);
+    d.setFont("helvetica", "bold");
+    d.setFontSize(20);
+    d.text(hospitalName, M.left + 80, 64);
+
+    d.setFont("helvetica", "normal");
+    d.setFontSize(11);
+    d.setTextColor(...grayText);
+    d.text(hospitalTagline, M.left + 80, 82);
+
+    d.setFontSize(9);
+    d.text(hospitalAddress, M.left + 80, 96);
+    d.text(hospitalContact, M.left + 80, 110);
+
+    // Right side
+    d.setFont("helvetica", "bold");
+    d.setFontSize(18);
+    d.setTextColor(...primaryColor);
+    d.text("Scan Report", pageWidth - M.right, 64, { align: "right" });
+
+    d.setFont("helvetica", "normal");
+    d.setFontSize(10);
+    d.setTextColor(110, 110, 110);
+    d.text(`Report Date: ${dateStr}`, pageWidth - M.right, 82, {
+      align: "right",
+    });
+    d.text(`Generated: ${timeStr}`, pageWidth - M.right, 96, {
+      align: "right",
+    });
+
+    d.setFontSize(9);
+    d.setTextColor(140, 140, 140);
+    d.text(
+      `Report ID: ${bookingId.slice(0, 8).toUpperCase()}`,
+      pageWidth - M.right,
+      110,
+      { align: "right" }
+    );
+
+    // Divider
+    d.setDrawColor(...primaryColor);
+    d.setLineWidth(1.8);
+    d.line(M.left, headerHeight, pageWidth - M.right, headerHeight);
+  };
+
+  // ====== FOOTER ======
+  const drawFooter = (d: any, page: number, total: number) => {
+    d.setDrawColor(220, 220, 220);
+    d.line(
+      M.left,
+      pageHeight - M.bottom - 8,
+      pageWidth - M.right,
+      pageHeight - M.bottom - 8
+    );
+
+    const t =
+      "This scan report is confidential and intended for the patient and authorized healthcare professionals.";
+    d.setFont("helvetica", "normal");
+    d.setFontSize(8);
+    d.setTextColor(120, 120, 120);
+    const wrap = d.splitTextToSize(t, pageWidth - M.left - M.right);
+    d.text(wrap, M.left, pageHeight - M.bottom + 4);
+
+    d.setFontSize(9);
+    d.text(`Page ${page} of ${total}`, pageWidth / 2, pageHeight - 16, {
+      align: "center",
+    });
+  };
+
+  // ====== WATERMARK ======
+  const drawWatermark = (d: any) => {
+    if (!watermarkDataUrl) return;
+    try {
+      const wmW = pageWidth * 0.28;
+      const wmH = pageHeight * 0.28;
+      const x = (pageWidth - wmW) / 2;
+      const y = (pageHeight - wmH) / 2;
+
+      const gState = (d as any).GState?.({ opacity: 0.04 });
+      if (gState && (d as any).setGState) {
+        (d as any).setGState(gState);
+        d.addImage(watermarkDataUrl, "PNG", x, y, wmW, wmH);
+      } else {
+        d.addImage(watermarkDataUrl, "PNG", x, y, wmW, wmH);
+      }
+    } catch {}
+  };
+
+  // ==========================================================================================
+  //                          PATIENT INFORMATION SECTION
+  // ==========================================================================================
+
+  this.logger(`Drawing page 1 - Patient and Test Information`);
+  drawHeader(doc);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(13);
+  doc.setTextColor(...primaryColor);
+  doc.text("Patient Information", M.left, M.top - 16);
+
+  const patientRows = [
+    ["Patient Name", patientProfile?.name || "Not Available"],
+    ["Email Address", patientRow?.email || "Not Available"],
+    ["Gender", patientProfile?.gender || "Not Available"],
+    ["Date of Birth", patientProfile?.dateOfBirth || "Not Available"],
+    ["Contact Number", patientProfile?.phone || "Not Available"],
+    ["Address", patientProfile?.address || "Not Available"],
+  ];
+
+  autoTable(doc, {
+    startY: M.top,
+    head: [["Field", "Value"]],
+    body: patientRows,
+    theme: "grid",
+    styles: { fontSize: 11, cellPadding: 6 },
+    headStyles: { fillColor: primaryColor, textColor: [255, 255, 255] },
+    margin: { left: M.left, right: M.right },
+  });
+
+  let cursorY = (doc as any).lastAutoTable.finalY + 28;
+
+  // ==========================================================================================
+  //                                  TEST INFORMATION SECTION
+  // ==========================================================================================
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(13);
+  doc.setTextColor(...primaryColor);
+  doc.text("Test Information", M.left, cursorY - 10);
+
+  const testPairs: [string, string][] = [
+    ["Test Name", testDetails?.name || "Laboratory Test"],
+    ["Test Category", testDetails?.category || "General"],
+    ["Test Description", testDetails?.description || "Diagnostic laboratory test"],
+    ["Test Duration", testDetails?.duration || "24-48 hours"],
+    [
+      "Preparation Instructions",
+      Array.isArray(testDetails?.preparation_instructions)
+        ? testDetails.preparation_instructions.join("; ")
+        : testDetails?.preparation_instructions || "Standard preparation",
+    ],
+    [
+      "Collection Date",
+      booking?.scheduled_date
+        ? new Date(booking.scheduled_date).toLocaleDateString("en-GB", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+          })
+        : "Not Available",
+    ],
+    ["Collection Time", booking?.scheduled_time || "Not Available"],
+    ["Collection Location", booking?.location || "Main Laboratory"],
+  ];
+
+  const testPairedRows: any[] = [];
+  for (let i = 0; i < testPairs.length; i += 2) {
+    const a = testPairs[i];
+    const b = testPairs[i + 1];
+    testPairedRows.push([
+      a?.[0] || "",
+      a?.[1] || "",
+      b?.[0] || "",
+      b?.[1] || "",
+    ]);
+  }
+
+  autoTable(doc, {
+    startY: cursorY + 8,
+    head: [["Field", "Details", "Field", "Details"]],
+    body: testPairedRows,
+    theme: "grid",
+    styles: { fontSize: 11, cellPadding: 6 },
+    headStyles: { fillColor: primaryColor, textColor: [255, 255, 255] },
+    margin: { left: M.left, right: M.right },
+  });
+
+  cursorY = (doc as any).lastAutoTable.finalY + 28;
+
+  // Draw footer for first page
+  drawFooter(doc, 1, 2);
+  this.logger(`Page 1 completed successfully`);
+
+  // ==========================================================================================
+  //                                  SCAN PREVIEW SECTION (NEW PAGE)
+  // ==========================================================================================
+
+  this.logger(`Creating page 2 - Scan Preview`);
+  doc.addPage();
+  
+  drawHeader(doc);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(14);
+  doc.setTextColor(...primaryColor);
+  doc.text("Scan Preview", M.left, M.top - 10);
+
+  this.logger(`Converting scan image to base64`);
+  const imgBase64 = `data:image/png;base64,${Buffer.from(fileBuffer).toString(
+    "base64"
+  )}`;
+
+  this.logger(`Getting image properties`);
+  const imgProps = doc.getImageProperties(imgBase64);
+  this.logger(`Image dimensions: ${imgProps.width}x${imgProps.height}, type: ${imgProps.fileType}`);
+
+  const maxW = pageWidth - M.left - M.right;
+  const maxH = pageHeight - M.top - M.bottom - 80;
+  let imgW = maxW;
+  let imgH = maxW * (imgProps.height / imgProps.width);
+
+  if (imgH > maxH) {
+    imgH = maxH;
+    imgW = imgH * (imgProps.width / imgProps.height);
+  }
+  this.logger(`Calculated image size for PDF: ${imgW.toFixed(2)}x${imgH.toFixed(2)} pt`);
+
+  const x = M.left;
+  const y = M.top + 10;
+
+  this.logger(`Adding scan image to PDF at position (${x}, ${y})`);
+  doc.addImage(imgBase64, imgProps.fileType || "PNG", x, y, imgW, imgH);
+
+  cursorY = y + imgH + 30;
+
+  // ==========================================================================================
+  //                                  SUMMARY SECTION
+  // ==========================================================================================
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(12);
+  doc.setTextColor(...primaryColor);
+  doc.text("Scan Summary", M.left, cursorY);
+
+  cursorY += 15;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(60, 60, 60);
+
+  const summaryLines = [
+    "• This scan has been reviewed and processed by the laboratory.",
+    "• Please consult a qualified clinician for professional interpretation.",
+    "• Reference ranges are not applicable for imaging scans.",
+    "• This is a computer-generated report; no physical signature is required.",
+  ];
+
+  summaryLines.forEach((t, i) => {
+    doc.text(t, M.left, cursorY + i * 12);
+  });
+
+  // Draw footer for second page
+  drawFooter(doc, 2, 2);
+  this.logger(`Page 2 completed successfully`);
+
+  // No need to draw watermark again here as it's already drawn at the top of page 2
+
+  // ==========================================================================================
+  //                                UPLOAD PDF TO CLOUDINARY
+  // ==========================================================================================
+  this.logger(`Generating PDF buffer`);
+  const pdfBuffer = Buffer.from(doc.output("arraybuffer"));
+  this.logger(`PDF buffer size: ${(pdfBuffer.length / 1024).toFixed(2)} KB`);
+
+  this.logger(`Uploading PDF to Cloudinary`);
+  const uploaded = await new Promise<any>((resolve, reject) => {
+    const publicId = `scan_${bookingId}_${Date.now()}`;
+    this.logger(`Cloudinary public ID: ${publicId}`);
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder: "medical_records/scans",
+        resource_type: "raw",
+        format: "pdf",
+        public_id: publicId,
+      },
+      (error, result) => {
+        if (error) {
+          this.logger(`Cloudinary upload failed: ${error}`);
+          reject(error);
+        } else {
+          this.logger(`Cloudinary upload successful: ${result?.secure_url}`);
+          resolve(result);
+        }
+      }
+    );
+    const readable = new Readable();
+    readable.push(pdfBuffer);
+    readable.push(null);
+    readable.pipe(stream);
+  });
+
+  const viewUrl = `https://hygieia-frontend.vercel.app/viewReport?fileUrl=${encodeURIComponent(
+    uploaded.secure_url
+  )}`;
+  this.logger(`Generated view URL: ${viewUrl}`);
+
+  // ==========================================================================================
+  //                                SAVE RECORD TO DATABASE
+  // ==========================================================================================
+  this.logger(`Saving medical record to database`);
+  const insertPayload = {
+    booked_test_id: bookingId,
+    patient_id: patientId,
+    title: "Scan Report",
+    record_type: "scan",
+    date: new Date().toISOString(),
+    file_url: viewUrl,
+    doctor_name,
+  };
+
+  const { error: insertError } = await this.supabase.from("medical_records").insert([insertPayload]);
+  if (insertError) {
+    this.logger(`Failed to insert medical record: ${insertError.message}`);
+    throw insertError;
+  }
+  this.logger(`Medical record saved successfully`);
+
+  // Fire-and-forget
+  this.logger(`Starting background tasks (status update & email)`);
+  (async () => {
+    this.logger(`Updating booking status to completed`);
+    const { error: updateError } = await this.supabase
+      .from("booked_lab_tests")
+      .update({ status: "completed" })
+      .eq("id", bookingId);
+    
+    if (updateError) {
+      this.logger(`Failed to update booking status: ${updateError.message}`);
+    } else {
+      this.logger(`Booking status updated to completed`);
+    }
+
+    if (patientRow?.email) {
+      this.logger(`Sending email notification to ${patientRow.email}`);
+      try {
+        await this.sendEmail(
+          patientRow.email,
+          "Scan Report Available",
+          `Your scan report for booking ID ${bookingId} is now available.\n\n${viewUrl}`
+        );
+        this.logger(`Email sent successfully to ${patientRow.email}`);
+      } catch (emailError) {
+        this.logger(`Failed to send email: ${emailError}`);
+      }
+    }
+  })();
+
+  this.logger(`Scan upload completed successfully for booking ID=${bookingId}`);
+  return insertPayload;
 }
 
 
