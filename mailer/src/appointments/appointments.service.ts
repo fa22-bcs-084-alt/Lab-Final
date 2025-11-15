@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { generateAppointmentConfirmationEmail } from 'helpers/generateAppointmentConfirmationEmail'
-import { generateAppointmentReminder30MinEmail } from 'helpers/generateAppointmentReminder30MinEmail';
-import { generateAppointmentTomorrowEmail } from 'helpers/generateAppointmentTomorrowEmail';
+import { generateAppointmentConfirmationEmail } from 'src/helpers/generateAppointmentConfirmationEmail'
+import { generateAppointmentReminder30MinEmail } from 'src/helpers/generateAppointmentReminder30MinEmail';
+import { generateAppointmentTomorrowEmail } from 'src/helpers/generateAppointmentTomorrowEmail';
 import { AppointmentDto } from 'src/dto/appointment.dto';
 import { MailService } from 'src/mail/mail.service';
 
