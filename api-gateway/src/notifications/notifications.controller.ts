@@ -7,9 +7,9 @@ export class NotificationsController {
  
   constructor(@Inject('AUTH_SERVICE') private readonly notifications: ClientProxy) {}
 
-    @Get('nutritionist/:id')
+    @Get(':id')
   async getNutritionistNotifications(@Param('id') id: string) {
-    return await this.notifications.send({ cmd: 'get_nutritionist_notifications' }, id).toPromise();
+    return await this.notifications.send({ cmd: 'get_notifications' }, id).toPromise();
   }
 
   

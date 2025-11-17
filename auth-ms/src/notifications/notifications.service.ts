@@ -18,7 +18,7 @@ export class NotificationsService {
 
 
 
-   async getNutritionistNotifications(nutritionistId: string) {
+   async getNotifications(nutritionistId: string) {
     const { data, error } = await this.supabase
       .from('notifications')
       .select('*')

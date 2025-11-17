@@ -5,9 +5,9 @@ import { MessagePattern } from '@nestjs/microservices';
 @Controller()
 export class NotificationsController {
   constructor(private readonly notificationsService: NotificationsService) {}
-    @MessagePattern({ cmd: 'get_nutritionist_notifications' })
+    @MessagePattern({ cmd: 'get_notifications' })
   async getNutritionistNotifications(nutritionistId: string) {
-    return await this.notificationsService.getNutritionistNotifications(nutritionistId);
+    return await this.notificationsService.getNotifications(nutritionistId);
   }
     @MessagePattern({ cmd: 'mark_all_as_read' })
   async markAllAsRead(userId: string) {
