@@ -37,6 +37,7 @@ export class AuthController {
 @Get('user')
 async getUser(@Query('id') id: string, @Query('role') role: string) {
   try {
+    role=role=='pathologist'?"lab-technician":role;
     console.log("Query params:", { id, role })
 
     return await firstValueFrom(
