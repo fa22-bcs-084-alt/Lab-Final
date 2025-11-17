@@ -5,9 +5,10 @@ import { BullModule } from '@nestjs/bullmq'
 
 @Module({
   imports: [  
-    BullModule.registerQueue({
-        name: 'appointment-schedules',
-      }),
+    BullModule.registerQueue(
+      {name: 'appointment-schedules'},
+      { name: 'lab-schedules' },
+    ),
     ],
   controllers: [SchedulerController],
   providers: [SchedulerService],

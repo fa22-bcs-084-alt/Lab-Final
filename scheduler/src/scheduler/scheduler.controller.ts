@@ -2,6 +2,7 @@ import { Controller, UsePipes, ValidationPipe } from '@nestjs/common'
 import { MessagePattern, Payload } from '@nestjs/microservices'
 import { SchedulerService } from './scheduler.service'
 import { AppointmentDto } from 'src/dto/appointment.dto'
+import { LabBookingConfirmationDto } from 'src/dto/lab-booking-confirmation.dto'
 
 @Controller('scheduler')
 export class SchedulerController {
@@ -12,4 +13,11 @@ export class SchedulerController {
   async handleAppointment(@Payload() data: AppointmentDto) {
     await this.schedulerService.handleAppointment(data)
   }
+
+
+   @MessagePattern('lab_test_booking_confirmed')
+  
+      async handleLabBooking(@Payload() data: LabBookingConfirmationDto) {
+        await this.schedulerService.handleLabBooking(data)
+      }
 }

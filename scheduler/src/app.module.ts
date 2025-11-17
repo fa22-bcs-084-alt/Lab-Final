@@ -5,6 +5,8 @@ import { SchedulerModule } from './scheduler/scheduler.module';
 import { ConfigModule } from '@nestjs/config/dist/config.module';
 import { ReminderModule } from './reminder/reminder.module';
 import { BullModule } from '@nestjs/bullmq'
+import { LabsReminderModule } from './labs-reminder/labs-reminder.module';
+
 
 @Module({
   imports: [SchedulerModule,
@@ -18,6 +20,7 @@ import { BullModule } from '@nestjs/bullmq'
         port: 6379,
       },
     }),
+      LabsReminderModule,
   
   ],
   controllers: [AppController],

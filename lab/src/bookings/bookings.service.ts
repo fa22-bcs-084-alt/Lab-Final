@@ -1,9 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable ,Inject} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { v2 as cloudinary } from 'cloudinary';
 import { Readable } from 'stream';
-import * as nodemailer from 'nodemailer';
 import autoTable from "jspdf-autotable"
 import { jsPDF } from "jspdf"
 import fs from "fs"
@@ -11,6 +10,10 @@ import path from "path"
 import { InjectModel } from '@nestjs/mongoose';
 import { Profile, ProfileDocument } from './schema/patient.profile.schema';
 import { Model } from 'mongoose';
+import { ClientProxy } from '@nestjs/microservices';
+import { LabBookingConfirmationDto } from './dtos/lab-booking-confirmation.dto';
+import { ScanReportCompletionDto } from './dtos/scan-report-completion.dto';
+import { LabReportCompletionDto } from './dtos/lab-report-completion.dto'
 
 export interface BookedLabTest {
   id: string
@@ -28,13 +31,11 @@ export interface BookedLabTest {
 export class BookingsService {
   private supabase: SupabaseClient;
   private lastAssignedIndex = 0;
-  private transporter: nodemailer.Transporter;
-  private readonly fastApiUrl: string
 
-
-
-
-  constructor(private configService: ConfigService , @InjectModel(Profile.name) private profileModel: Model<ProfileDocument>) {
+  constructor(private configService: ConfigService , 
+     @Inject('MAILER_SERVICE') private readonly mailerClient: ClientProxy,
+       @Inject('SCHEDULER_SERVICE') private readonly schedulerClient: ClientProxy,
+    @InjectModel(Profile.name) private profileModel: Model<ProfileDocument>) {
     this.supabase = createClient(
       this.configService.get<string>('SUPABASE_URL')!,
       this.configService.get<string>('SUPABASE_SERVICE_ROLE_KEY')!,
@@ -46,28 +47,11 @@ export class BookingsService {
       api_secret: this.configService.get<string>('CLOUDINARY_API_SECRET'),
     });
 
-    this.transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: this.configService.get<string>('SMTP_EMAIL'),
-        pass: this.configService.get<string>('SMTP_PASSWORD'),
-      },
-    });
-
-    this.fastApiUrl = this.configService.get<string>('FASTAPI_URL') || 'http://localhost:4004/medical-records/index'
 
   }
 
   private logger(msg:string){
     console.log("[INFO BOOKING MS]"+msg)
-  }
-  private async sendEmail(to: string, subject: string, text: string) {
-    await this.transporter.sendMail({
-      from: this.configService.get<string>('SMTP_USER'),
-      to,
-      subject,
-      text,
-    });
   }
 
 async bookTest(data: {
@@ -81,7 +65,7 @@ async bookTest(data: {
   this.logger(`Booking test for date=${data.scheduledDate}`);
 
   // Fetch next lab technician only
-  const { data: technicians, error: techError } = await this.supabase
+  let { data: technicians, error: techError } = await this.supabase
     .from('users')
     .select('id')
     .eq('role', 'lab_technician')
@@ -89,9 +73,23 @@ async bookTest(data: {
     .limit(1);
 
   if (techError) throw new Error(techError.message);
-  if (!technicians || technicians.length === 0) {
-    throw new Error('No lab technicians available');
-  }
+ if (!technicians || technicians.length === 0) {
+  this.lastAssignedIndex = 0;
+
+  const { data: resetTechs, error: resetErr } = await this.supabase
+    .from('users')
+    .select('id')
+    .eq('role', 'lab_technician')
+    .range(0, 0)
+    .limit(1);
+
+  if (resetErr) throw new Error(resetErr.message);
+  if (!resetTechs || resetTechs.length === 0) throw new Error('No lab technicians available');
+
+  technicians = resetTechs;
+}
+
+
 
   const techId = technicians[0].id;
   this.lastAssignedIndex++;
@@ -132,13 +130,40 @@ async bookTest(data: {
 
   const { data: patient } = patientResult;
 
+  
+
   if (patient?.email) {
+
+   const {data:TestData, error:TestError}= await this.supabase.from('lab_tests').select("*").eq('id',data.testId).single();
+   const patientData= await this.profileModel.findOne({id:data.patientId}).lean().exec(); 
+   
     this.logger(`Sending email to ${patient.email}`);
-    this.sendEmail(
-      patient.email,
-      'Appointment Confirmation',
-      `Your test has been booked for ${data.scheduledDate} at ${data.scheduledTime}.`
-    );
+    this.mailerClient.emit('lab_test_booking_confirmed', {
+      technician_id: techId,
+      booking_id: booking.id,
+      patient_id: data.patientId,
+      patient_email: patient.email,
+      test_name: TestData?.name || 'Lab Test',
+      scheduled_date: data.scheduledDate,
+      scheduled_time: data.scheduledTime,
+      location: data.location,
+      patient_name: patientData?.name,
+    } as LabBookingConfirmationDto);
+
+
+       this.schedulerClient.emit('lab_test_booking_confirmed', {
+      technician_id: techId,
+      booking_id: booking.id,
+      patient_id: data.patientId,
+      patient_email: patient.email,
+      test_name: TestData?.name || 'Lab Test',
+      scheduled_date: data.scheduledDate,
+      scheduled_time: data.scheduledTime,
+      location: data.location,
+      patient_name: patientData?.name,
+    } as LabBookingConfirmationDto);
+
+
   }
 
   this.logger(`Booking completed with ID=${booking.id}`);
@@ -590,14 +615,17 @@ async uploadScan(
     if (patientRow?.email) {
       this.logger(`Sending email notification to ${patientRow.email}`);
       try {
-        await this.sendEmail(
-          patientRow.email,
-          "Scan Report Available",
-          `Your scan report for booking ID ${bookingId} is now available.\n\n${viewUrl}`
-        );
-        this.logger(`Email sent successfully to ${patientRow.email}`);
+        this.mailerClient.emit('scan_report_available', {
+          booking_id: bookingId,
+          patient_id: patientId,
+          patient_email: patientRow.email,
+          patient_name: patientProfile?.name,
+          report_url: viewUrl,
+          test_name: testDetails?.name,
+        } as ScanReportCompletionDto);
+        this.logger(`Email event emitted successfully for ${patientRow.email}`);
       } catch (emailError) {
-        this.logger(`Failed to send email: ${emailError}`);
+        this.logger(`Failed to emit email event: ${emailError}`);
       }
     }
   })();
@@ -1159,12 +1187,16 @@ async uploadResult(
   this.logger(`Booking status updated to completed for ID=${bookingId}`);
 
   if (patientRow?.email) {
-    await this.sendEmail(
-      patientRow.email,
-      "Lab Report Available",
-      `Your lab report "${cleanTitle(body.title)}" for booking ID ${bookingId} is now available. View it here: ${viewUrl}`
-    );
-    this.logger(`Email sent to patient ${patientRow.email}`);
+    this.mailerClient.emit('lab_report_available', {
+      booking_id: bookingId,
+      patient_id: patientId,
+      patient_email: patientRow.email,
+      patient_name: patientProfileFromMongo?.name,
+      report_title: cleanTitle(body.title),
+      report_url: viewUrl,
+      test_name: labTestRow?.name,
+    } as LabReportCompletionDto);
+    this.logger(`Email event emitted to patient ${patientRow.email}`);
   }
 
   return {
