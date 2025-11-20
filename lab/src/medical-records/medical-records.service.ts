@@ -49,6 +49,11 @@ async uploadFile(patientId: string, fileBuffer: Buffer | any, fileName: string, 
     Readable.from(fileBuffer).pipe(stream)
   })
 
+  const frontendDomain = "https://hygieia-frontend.vercel.app"
+  const viewUrl = upload?.secure_url
+    ? `${frontendDomain}/viewReport?fileUrl=${encodeURIComponent(upload.secure_url)}`
+    : `${frontendDomain}/viewReport?fileUrl=${encodeURIComponent(upload?.url || "")}`
+
   const { data, error } = await this.supabase
     .from('medical_records')
     .insert([{
@@ -56,7 +61,7 @@ async uploadFile(patientId: string, fileBuffer: Buffer | any, fileName: string, 
       patient_id: patientId,
       title: dto.title,
       record_type: dto.recordType,
-      file_url: upload.secure_url,
+      file_url: viewUrl,
       doctor_name: dto.doctor_name,
     }])
     .select()
@@ -66,7 +71,7 @@ formData.append('patientId', patientId)
 formData.append('title', dto.title)
 formData.append('recordType', 'report')
 formData.append('doctorName', dto.doctor_name || '')
-formData.append('fileUrl', upload.secure_url)
+formData.append('fileUrl', viewUrl)
 
 try {
   const res = await axios.post(this.fastApiUrl, formData, {
@@ -106,18 +111,24 @@ async deleteRecord(id: string, patientId: string) {
   console.log('[Lab MS] Record found, deleting file if exists:', data.file_url)
 
   if (data?.file_url) {
-    const parts = data.file_url.split('/')
-    const filename = parts.pop()
-    const publicId = filename?.split('.')[0]
+    // Extract the actual Cloudinary URL from the frontend view URL
+    const urlParams = new URLSearchParams(data.file_url.split('?')[1])
+    const actualFileUrl = urlParams.get('fileUrl')
+    
+    if (actualFileUrl) {
+      const parts = actualFileUrl.split('/')
+      const filename = parts.pop()
+      const publicId = filename?.split('.')[0]
 
-    console.log('[Lab MS] Deleting file from Cloudinary, publicId:', publicId)
+      console.log('[Lab MS] Deleting file from Cloudinary, publicId:', publicId)
 
-    if (publicId) {
-      const result = await cloudinary.uploader.destroy(`medical-records/${publicId}`, {
-        resource_type: 'raw',
-      })
-      
-      console.log('[Lab MS] Cloudinary delete result:', result)
+      if (publicId) {
+        const result = await cloudinary.uploader.destroy(`medical-records/${publicId}`, {
+          resource_type: 'raw',
+        })
+        
+        console.log('[Lab MS] Cloudinary delete result:', result)
+      }
     }
   }
 

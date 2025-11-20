@@ -857,14 +857,11 @@ async uploadResult(
     ["Test Name", labTestRow?.name || body.title || "Laboratory Test"],
     ["Test Category", labTestRow?.category || "General"],
     ["Test Description", labTestRow?.description || "Diagnostic laboratory test"],
-    ["Measurement Unit", labTestRow?.unit || labTestRow?.record_type || "Various"],
-    ["Reference Range", labTestRow?.optimal_range || "See individual results"],
     ["Test Duration", labTestRow?.duration || "24-48 hours"],
     ["Collection Date", bookedTest?.scheduled_date ? new Date(bookedTest.scheduled_date).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "Not Available"],
     ["Collection Time", bookedTest?.scheduled_time || "Not Available"],
     ["Collection Location", bookedTest?.location || "Main Laboratory"],
     ["Preparation Instructions", labTestRow?.preparation_instructions && Array.isArray(labTestRow.preparation_instructions) && labTestRow.preparation_instructions.length > 0 ? labTestRow.preparation_instructions.join("; ") : "Standard preparation"],
-    // Special Instructions removed per request
   ];
   const testInfoBodyPaired: any[] = [];
   for (let i = 0; i < testPairsSrc.length; i += 2) {
@@ -1014,6 +1011,20 @@ async uploadResult(
   const { data: prevBookings } = await prevBookingsQuery;
 
   if (Array.isArray(prevBookings) && prevBookings.length > 0) {
+    // Build a map of current test parameters for standardization (parameter name -> unit & reference)
+    const currentParamsMap = new Map<string, { unit: string; reference: string }>();
+    if (Array.isArray(body.resultData)) {
+      body.resultData.forEach((row: any) => {
+        const paramName = (row.test || "").trim().toLowerCase();
+        if (paramName) {
+          currentParamsMap.set(paramName, {
+            unit: row.unit || "N/A",
+            reference: row.reference || "See lab notes"
+          });
+        }
+      });
+    }
+
     // Start previous results on a new page for clean layout
     doc.addPage();
     cursorY = M.top;
@@ -1021,10 +1032,12 @@ async uploadResult(
     doc.setFontSize(14);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(...primaryColor);
-    doc.text("Previous Results", M.left, cursorY - 10);
+    doc.text("Previous Results Comparison", M.left, cursorY - 10);
     cursorY += 6;
-    // Consolidate all previous results into a single table (no heading/URLs)
-    const consolidatedRows: any[] = [];
+    
+    // Group previous results by parameter for better comparison
+    const parameterHistory = new Map<string, any[]>();
+    
     for (const pb of prevBookings) {
       const { data: prevRecordData } = await this.supabase
         .from("medical_records")
@@ -1047,45 +1060,74 @@ async uploadResult(
 
       if (parsedResults && parsedResults.length > 0) {
         parsedResults.forEach(r => {
-          const status = determineStatus(r.result, r.reference);
-          consolidatedRows.push([
-            prevDate,
-            prevRecordData.title || "Previous Laboratory Report",
-            r.test ?? "N/A",
-            r.result ?? "N/A",
-            r.reference ?? "See notes",
-            r.unit ?? "N/A",
-            status,
-          ]);
+          const paramName = (r.test || "").trim().toLowerCase();
+          // Only include parameters that match current test parameters
+          if (paramName && currentParamsMap.has(paramName)) {
+            if (!parameterHistory.has(paramName)) {
+              parameterHistory.set(paramName, []);
+            }
+            const history = parameterHistory.get(paramName);
+            if (history) {
+              history.push({
+                date: prevDate,
+                result: r.result ?? "N/A",
+                originalUnit: r.unit,
+                originalReference: r.reference
+              });
+            }
+          }
         });
       }
     }
 
-    if (consolidatedRows.length > 0) {
-      const simplifiedRows = consolidatedRows.map(r => [
-        r[0], // Date
-        r[1], // Report title
-        r[3], // Result
-        r[6], // Status
-      ]);
+    if (parameterHistory.size > 0) {
+      // Create consolidated rows with standardized units and references
+      const consolidatedRows: any[] = [];
+      
+      parameterHistory.forEach((history, paramName) => {
+        const standardized = currentParamsMap.get(paramName);
+        if (!standardized) return; // Skip if no standardized values
+        
+        // Sort by date (most recent first)
+        history.sort((a, b) => {
+          const dateA = new Date(a.date.split(' ').reverse().join('-'));
+          const dateB = new Date(b.date.split(' ').reverse().join('-'));
+          return dateB.getTime() - dateA.getTime();
+        });
+        
+        history.forEach(entry => {
+          // Use standardized unit and reference from current test
+          const status = determineStatus(entry.result, standardized.reference);
+          consolidatedRows.push([
+            entry.date,
+            paramName.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' '), // Capitalize parameter name
+            entry.result,
+            standardized.unit, // Use current test's unit
+            standardized.reference, // Use current test's reference
+            status
+          ]);
+        });
+      });
     
       autoTable(doc, {
         startY: cursorY,
-        head: [["Date", "Report", "Result", "Status"]],
-        body: simplifiedRows,
+        head: [["Date", "Parameter", "Result", "Unit", "Reference Range", "Status"]],
+        body: consolidatedRows,
         theme: "grid",
         styles: { fontSize: 9, cellPadding: 5, valign: "middle" },
         headStyles: { fillColor: [200, 200, 200], textColor: [40, 40, 40], halign: "left" },
         alternateRowStyles: { fillColor: [252, 252, 252] },
         columnStyles: {
-          0: { cellWidth: 80 },
-          1: { cellWidth: 200 },
-          2: { cellWidth: 100 },
-          3: { cellWidth: 80 },
+          0: { cellWidth: 70 },
+          1: { cellWidth: 140 },
+          2: { cellWidth: 80 },
+          3: { cellWidth: 60 },
+          4: { cellWidth: 100 },
+          5: { cellWidth: 60 },
         },
         margin: { top: M.top, bottom: M.bottom + 50, left: M.left, right: M.right },
         didParseCell(data: any) {
-          if (data.column.index === 3) {
+          if (data.column.index === 5) {
             const val = data.cell.raw;
             if (val === "High") {
               data.cell.styles.textColor = [189, 45, 45];
@@ -1100,7 +1142,7 @@ async uploadResult(
             }
           }
           if (data.column.index === 2) {
-            const status = data.row.raw?.[3];
+            const status = data.row.raw?.[5];
             if (status === "High") data.cell.styles.textColor = [189, 45, 45];
             else if (status === "Low") data.cell.styles.textColor = [204, 102, 0];
             else if (status === "Normal") data.cell.styles.textColor = [34, 139, 34];
@@ -1115,12 +1157,32 @@ async uploadResult(
         },
       });
       cursorY = (doc as any).lastAutoTable.finalY + 12;
+    } else {
+      // No matching previous results found
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(100, 100, 100);
+      doc.text("No previous results available for comparison with current test parameters.", M.left, cursorY + 10);
+      cursorY += 30;
     }
     
   }
 
   // --- Professional Conclusion Section ---
   cursorY += 20;
+  
+  // Check if there's enough space for the summary section (heading + 7 lines + padding)
+  // Each line is ~12pt, so we need approximately 135pt for the entire section
+  const summaryHeight = 135;
+  const pageBottomThreshold = pageHeight - M.bottom - 50; // Footer area starts here
+  
+  if (cursorY + summaryHeight > pageBottomThreshold) {
+    doc.addPage();
+    drawWatermark(doc);
+    drawHeader(doc);
+    cursorY = M.top;
+  }
+  
   doc.setFontSize(12);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(...primaryColor);
