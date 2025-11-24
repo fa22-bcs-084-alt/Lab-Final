@@ -13,7 +13,8 @@ import { Model } from 'mongoose';
 import { ClientProxy } from '@nestjs/microservices';
 import { LabBookingConfirmationDto } from './dtos/lab-booking-confirmation.dto';
 import { ScanReportCompletionDto } from './dtos/scan-report-completion.dto';
-import { LabReportCompletionDto } from './dtos/lab-report-completion.dto'
+import { LabReportCompletionDto } from './dtos/lab-report-completion.dto';
+import { LabBookingCancellationDto } from './dtos/lab-cancellation-email.dto';
 
 export interface BookedLabTest {
   id: string
@@ -1276,14 +1277,79 @@ async uploadResult(
 
 
   async cancelBooking(bookingId: string) {
-    const { data, error } = await this.supabase
-      .from('booked_lab_tests')
-      .update({ status: 'cancelled' })  // Set the status to 'cancelled'
-      .eq('id', bookingId)
-      .select()
-      .single();
+    this.logger(`Cancelling booking ID=${bookingId}`);
 
+    // Fetch booking details and patient email in parallel
+    const [bookingResult, bookingDetailsResult] = await Promise.all([
+      this.supabase
+        .from('booked_lab_tests')
+        .update({ status: 'cancelled' })
+        .eq('id', bookingId)
+        .select()
+        .single(),
+      this.supabase
+        .from('booked_lab_tests')
+        .select('patient_id, test_id, scheduled_date, scheduled_time, location')
+        .eq('id', bookingId)
+        .single()
+    ]);
+
+    const { data, error } = bookingResult;
     if (error) throw new Error(error.message);
+
+    const { data: bookingDetails } = bookingDetailsResult;
+    
+    if (bookingDetails?.patient_id) {
+      // Fetch patient email, test name, and patient profile
+      const [patientResult, testResult, patientProfile] = await Promise.all([
+        this.supabase
+          .from('users')
+          .select('email')
+          .eq('id', bookingDetails.patient_id)
+          .single(),
+        this.supabase
+          .from('lab_tests')
+          .select('name')
+          .eq('id', bookingDetails.test_id)
+          .single(),
+        this.profileModel
+          .findOne({ id: bookingDetails.patient_id })
+          .lean()
+          .exec()
+      ]);
+
+      const { data: patient } = patientResult;
+      const { data: test } = testResult;
+
+      if (patient?.email) {
+        const cancellationDate = new Date().toLocaleDateString('en-GB', {
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric'
+        });
+
+        const scheduledDate = new Date(bookingDetails.scheduled_date).toLocaleDateString('en-GB', {
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric'
+        });
+
+        this.logger(`Sending cancellation email to ${patient.email}`);
+        this.mailerClient.emit('lab_test_booking_cancelled', {
+          booking_id: bookingId,
+          patient_id: bookingDetails.patient_id,
+          patient_email: patient.email,
+          patient_name: patientProfile?.name,
+          test_name: test?.name || 'Lab Test',
+          scheduled_date: scheduledDate,
+          scheduled_time: bookingDetails.scheduled_time,
+          location: bookingDetails.location,
+          cancellation_date: cancellationDate,
+        } as LabBookingCancellationDto);
+      }
+    }
+
+    this.logger(`Booking ${bookingId} cancelled successfully`);
     return data;
   }
 

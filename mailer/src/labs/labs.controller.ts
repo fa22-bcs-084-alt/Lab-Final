@@ -4,6 +4,7 @@ import { MessagePattern } from '@nestjs/microservices';
 import { LabBookingConfirmationDto } from './dtos/lab-booking-confirmation.dto';
 import { LabReportCompletionDto } from './dtos/lab-report-completion.dto';
 import { ScanReportCompletionDto } from './dtos/scan-report-completion.dto';
+import { LabBookingCancellationDto } from './dtos/lab-cancellation-email.dto';
 
 @Controller('labs')
 
@@ -33,5 +34,10 @@ export class LabsController {
    @MessagePattern('scan_report_available')
   async handleScanReportAvailable(data: ScanReportCompletionDto) {
     return this.labsService.processScanReportAvailable(data);
+  }
+
+  @MessagePattern('lab_test_booking_cancelled')
+  async handleLabTestBookingCancelled(data: LabBookingCancellationDto) {
+    return this.labsService.processLabTestBookingCancellation(data);
   }
 }

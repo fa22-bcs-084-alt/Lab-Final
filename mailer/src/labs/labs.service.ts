@@ -8,6 +8,8 @@ import { LabReportCompletionDto } from './dtos/lab-report-completion.dto';
 import { generateLabReportCompletionEmail } from 'src/helpers/generateLabReportCompletionEmail';
 import { generateScanReportCompletionEmail } from 'src/helpers/generateScanReportCompletionEmail';
 import { ScanReportCompletionDto } from './dtos/scan-report-completion.dto';
+import { LabBookingCancellationDto } from './dtos/lab-cancellation-email.dto';
+import { generateLabTestCancellationEmail } from 'src/helpers/generateLabTestCancellationEmail';
 
 @Injectable()
 export class LabsService {
@@ -55,6 +57,16 @@ export class LabsService {
             patient_email,
             'Your Scan Report is Ready',
              generateScanReportCompletionEmail(data)
+          );
+    }
+
+    async processLabTestBookingCancellation(data: LabBookingCancellationDto) {
+        console.log('Processing lab test booking cancellation:', data);
+        const {patient_email} = data;
+        this.mailService.sendMail(
+            patient_email,
+            'Lab Test Booking Cancelled',
+             generateLabTestCancellationEmail(data)
           );
     }
 }
