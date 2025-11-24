@@ -13,6 +13,7 @@ import { MailerService } from '../mailer/mailer.service'
 import { createZoomMeeting } from 'src/utils/zoom'
 import { ClientProxy } from '@nestjs/microservices'
 import { AppointmentMQDto } from './dto/appointmentMQ.dto'
+import { AppointmentCancellationDto } from './dto/appointment-cancellation.dto'
 
 type DbRow = {
   id: string
@@ -381,12 +382,74 @@ async update(id: string, dto: any): Promise<ApiRow> {
 }
 
 
-  async remove(id: string): Promise<{ id: string; deleted: boolean }> {
+  async remove(id: string): Promise<{ id: string; cancelled: boolean }> {
     this.logger(" APPOINTMENT CANCEL CALLED FOR APPOINTMENT ID= "+id)
-    const { error } = await this.supabase.from('appointments').delete().eq('id', id)
+    
+    // Fetch appointment details before cancelling
+    const { data: appointment, error: fetchError } = await this.supabase
+      .from('appointments')
+      .select('*')
+      .eq('id', id)
+      .single()
+    
+    if (fetchError?.message?.includes('No rows')) throw new NotFoundException('Appointment not found')
+    if (fetchError) throw new BadRequestException(fetchError.message)
+    
+    // Update status to cancelled instead of deleting
+    const { error } = await this.supabase
+      .from('appointments')
+      .update({ status: 'cancelled' })
+      .eq('id', id)
+    
     if (error) throw new BadRequestException(error.message)
-      this.logger(" APPOINTMENT CANCEL SUCCESSFULLY FOR APPOINTMENT ID= "+id)
-    return { id, deleted: true }
+    
+    this.logger(" APPOINTMENT STATUS UPDATED TO CANCELLED FOR APPOINTMENT ID= "+id)
+    
+    // Send cancellation email
+    try {
+      const patient = await this.profileModel.findOne({ id: appointment.patient_id }).lean()
+      const doctor = await this.nut.findOne({ id: appointment.doctor_id }).lean()
+      
+      // Fetch patient email from users table
+      const { data: userData, error: userError } = await this.supabase
+        .from('users')
+        .select('email')
+        .eq('id', appointment.patient_id)
+        .single()
+      
+      if (patient && doctor && userData?.email) {
+        const cancellationDate = new Date().toLocaleDateString('en-GB', {
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric'
+        })
+        
+        this.logger(`Sending cancellation email to ${userData.email}`)
+        this.mailerClient.emit('appointment_cancelled', {
+          appointment_id: id,
+          patient_id: appointment.patient_id,
+          doctor_id: appointment.doctor_id,
+          patient_email: userData.email,
+          patient_name: patient.name || 'Patient',
+          doctor_name: doctor.name || 'Doctor',
+          appointment_date: appointment.date,
+          appointment_time: appointment.time,
+          appointment_mode: appointment.mode,
+          appointment_link: appointment.link || undefined,
+          cancellation_date: cancellationDate,
+        } as AppointmentCancellationDto)
+      } else {
+        this.logger("COULD NOT SEND CANCELLATION EMAIL - MISSING PATIENT/DOCTOR DATA OR EMAIL")
+        if (userError) {
+          this.logger("ERROR FETCHING USER EMAIL: " + userError.message)
+        }
+      }
+    } catch (error) {
+      this.logger("ERROR SENDING APPOINTMENT CANCELLATION EMAIL: " + error.message)
+      // Don't throw error, just log it - cancellation should still succeed
+    }
+    
+    return { id, cancelled: true }
   }
 
 

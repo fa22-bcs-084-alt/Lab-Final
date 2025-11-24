@@ -2,8 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { generateAppointmentConfirmationEmail } from 'src/helpers/generateAppointmentConfirmationEmail'
 import { generateAppointmentReminder30MinEmail } from 'src/helpers/generateAppointmentReminder30MinEmail';
 import { generateAppointmentTomorrowEmail } from 'src/helpers/generateAppointmentTomorrowEmail';
-import { AppointmentDto } from 'src/dto/appointment.dto';
+import { AppointmentDto } from 'src/appointments/dto/appointment.dto';
 import { MailService } from 'src/mail/mail.service';
+import { AppointmentCancellationDto } from 'src/appointments/dto/appointment-cancellation.dto';
+import { generateAppointmentCancellationEmail } from 'src/helpers/generateAppointmentCancellationEmail';
 
 @Injectable()
 export class AppointmentsService {
@@ -35,6 +37,15 @@ async handleOneDayAppointmentReminder(data: AppointmentDto) {
             data.patient_email,
             'Appointment Reminder - 1 Day',
             generateAppointmentTomorrowEmail(data)
+        );
+  }
+
+async handleAppointmentCancellation(data: AppointmentCancellationDto) {
+   console.log('Handling appointment cancellation in AppointmentsService:', data);
+        await this.mailService.sendMail(
+            data.patient_email,
+            'Appointment Cancelled',
+            generateAppointmentCancellationEmail(data)
         );
   }
 }

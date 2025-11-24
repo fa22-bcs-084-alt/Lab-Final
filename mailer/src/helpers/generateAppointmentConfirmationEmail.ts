@@ -1,4 +1,4 @@
-import { AppointmentDto } from "src/dto/appointment.dto";
+import { AppointmentDto } from "src/appointments/dto/appointment.dto";
 
 export const HYGIEIA_LOGO = "https://hygieia-frontend.vercel.app/_next/image?url=%2Flogo%2Flogo-2.png&w=128&q=90"
 
