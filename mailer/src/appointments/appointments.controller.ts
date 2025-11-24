@@ -3,6 +3,7 @@ import { AppointmentsService } from './appointments.service';
 import { MessagePattern, Payload } from '@nestjs/microservices'
 import { AppointmentDto } from 'src/appointments/dto/appointment.dto';
 import { AppointmentCancellationDto } from 'src/appointments/dto/appointment-cancellation.dto';
+import { AppointmentUpdateDto } from 'src/appointments/dto/appointment-update.dto';
 
 @Controller('appointments')
 export class AppointmentsController {
@@ -35,6 +36,12 @@ export class AppointmentsController {
   @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
   async handleAppointmentCancellation(@Payload() data: AppointmentCancellationDto) {
    await this.appointmentsService.handleAppointmentCancellation(data)
+  }
+
+  @MessagePattern('appointment_updated')
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
+  async handleAppointmentUpdate(@Payload() data: AppointmentUpdateDto) {
+   await this.appointmentsService.handleAppointmentUpdate(data)
   }
 }
 

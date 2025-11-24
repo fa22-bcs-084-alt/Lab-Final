@@ -14,6 +14,7 @@ import { createZoomMeeting } from 'src/utils/zoom'
 import { ClientProxy } from '@nestjs/microservices'
 import { AppointmentMQDto } from './dto/appointmentMQ.dto'
 import { AppointmentCancellationDto } from './dto/appointment-cancellation.dto'
+import { AppointmentUpdateDto } from './dto/appointment-update.dto'
 
 type DbRow = {
   id: string
@@ -353,6 +354,16 @@ async findAll(query: {
 async update(id: string, dto: any): Promise<ApiRow> {
   this.logger("APPOINTMENT UPDATE CALLED FOR APPOINTMENT ID=" + id )
 
+  // Fetch the current appointment to get previous values
+  const { data: currentAppointment, error: fetchError } = await this.supabase
+    .from('appointments')
+    .select('*')
+    .eq('id', id)
+    .single()
+
+  if (fetchError?.message?.includes('No rows')) throw new NotFoundException('appointment not found')
+  if (fetchError) throw new BadRequestException(fetchError.message)
+
   const payload = {
     patient_id: dto.patient?.id,
     doctor_id: dto.doctor?.id,
@@ -378,6 +389,72 @@ async update(id: string, dto: any): Promise<ApiRow> {
   if (error) throw new BadRequestException(error.message)
 
   this.logger("APPOINTMENT UPDATED SUCCESSFULLY FOR=" + id)
+
+  // Send appropriate email based on status change
+  try {
+    const patient = await this.profileModel.findOne({ id: data.patient_id }).lean()
+    const doctor = await this.nut.findOne({ id: data.doctor_id }).lean()
+    
+    // Fetch patient email from users table
+    const { data: userData, error: userError } = await this.supabase
+      .from('users')
+      .select('email')
+      .eq('id', data.patient_id)
+      .single()
+    
+    if (patient && doctor && userData?.email) {
+      // Check if status changed to cancelled
+      if (dto.status === 'cancelled' && currentAppointment.status !== 'cancelled') {
+        const cancellationDate = new Date().toLocaleDateString('en-GB', {
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric'
+        })
+        
+        this.logger(`Sending cancellation email to ${userData.email}`)
+        this.mailerClient.emit('appointment_cancelled', {
+          appointment_id: id,
+          patient_id: data.patient_id,
+          doctor_id: data.doctor_id,
+          patient_email: userData.email,
+          patient_name: patient.name || 'Patient',
+          doctor_name: doctor.name || 'Doctor',
+          appointment_date: data.date,
+          appointment_time: data.time,
+          appointment_mode: data.mode,
+          appointment_link: data.link || undefined,
+          cancellation_date: cancellationDate,
+        } as AppointmentCancellationDto)
+      } 
+      // Send update email for other changes
+      else if (dto.status !== 'cancelled') {
+        this.logger(`Sending update email to ${userData.email}`)
+        this.mailerClient.emit('appointment_updated', {
+          appointment_id: id,
+          patient_id: data.patient_id,
+          doctor_id: data.doctor_id,
+          patient_email: userData.email,
+          patient_name: patient.name || 'Patient',
+          doctor_name: doctor.name || 'Doctor',
+          appointment_date: data.date,
+          appointment_time: data.time,
+          appointment_mode: data.mode,
+          appointment_link: data.link || undefined,
+          previous_date: currentAppointment.date,
+          previous_time: currentAppointment.time,
+        } as AppointmentUpdateDto)
+      }
+    } else {
+      this.logger("COULD NOT SEND EMAIL - MISSING PATIENT/DOCTOR DATA OR EMAIL")
+      if (userError) {
+        this.logger("ERROR FETCHING USER EMAIL: " + userError.message)
+      }
+    }
+  } catch (error) {
+    this.logger("ERROR SENDING APPOINTMENT UPDATE EMAIL: " + error.message)
+    // Don't throw error, just log it - update should still succeed
+  }
+
   return this.toApi(data as DbRow)
 }
 

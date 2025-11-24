@@ -6,6 +6,8 @@ import { AppointmentDto } from 'src/appointments/dto/appointment.dto';
 import { MailService } from 'src/mail/mail.service';
 import { AppointmentCancellationDto } from 'src/appointments/dto/appointment-cancellation.dto';
 import { generateAppointmentCancellationEmail } from 'src/helpers/generateAppointmentCancellationEmail';
+import { AppointmentUpdateDto } from 'src/appointments/dto/appointment-update.dto';
+import { generateAppointmentUpdateEmail } from 'src/helpers/generateAppointmentUpdateEmail';
 
 @Injectable()
 export class AppointmentsService {
@@ -46,6 +48,15 @@ async handleAppointmentCancellation(data: AppointmentCancellationDto) {
             data.patient_email,
             'Appointment Cancelled',
             generateAppointmentCancellationEmail(data)
+        );
+  }
+
+async handleAppointmentUpdate(data: AppointmentUpdateDto) {
+   console.log('Handling appointment update in AppointmentsService:', data);
+        await this.mailService.sendMail(
+            data.patient_email,
+            'Appointment Updated',
+            generateAppointmentUpdateEmail(data)
         );
   }
 }
