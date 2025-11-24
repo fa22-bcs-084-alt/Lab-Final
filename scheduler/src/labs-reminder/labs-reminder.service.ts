@@ -6,7 +6,7 @@ import { createClient } from '@supabase/supabase-js'
 import { LabBookingConfirmationDto } from 'src/dto/lab-booking-confirmation.dto'
 
 
-@Processor('appointment-schedules')
+@Processor('lab-schedules')
 export class LabsReminderService extends WorkerHost {
   private readonly logger = new Logger(LabsReminderService.name)
   private readonly supabase
