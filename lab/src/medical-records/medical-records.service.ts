@@ -10,7 +10,7 @@ import fs from 'fs'
 @Injectable()
 export class MedicalRecordsService {
   private readonly supabase: SupabaseClient
-    private readonly fastApiUrl: string
+
 
 
   constructor(private configService: ConfigService) {
@@ -24,8 +24,7 @@ export class MedicalRecordsService {
       api_key: this.configService.get<string>('CLOUDINARY_API_KEY'),
       api_secret: this.configService.get<string>('CLOUDINARY_API_SECRET'),
     })
-    this.fastApiUrl = this.configService.get<string>('FASTAPI_URL') || 'http://localhost:4004/medical-records/index'
-
+  
   }
 
 async uploadFile(patientId: string, fileBuffer: Buffer | any, fileName: string, mimeType: string, dto) {
@@ -73,15 +72,6 @@ formData.append('recordType', 'report')
 formData.append('doctorName', dto.doctor_name || '')
 formData.append('fileUrl', viewUrl)
 
-try {
-  const res = await axios.post(this.fastApiUrl, formData, {
-    headers: formData.getHeaders()
-  })
-  console.log(res.data)
-} catch (e) {
-  console.error(e.response?.data || e.message)
-}
-  
 
   if (error) throw error
   return data
