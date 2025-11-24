@@ -24,6 +24,12 @@ export class LabsReminderService extends WorkerHost {
 
     if (job.name === 'oneDayReminder') {
       if (await this.isLabTestActive(job.data.booking_id)) {
+        // Check if lab test time has changed (rescheduled)
+        const hasChanged = await this.hasLabTestTimeChanged(job.data.booking_id, scheduled_date, scheduled_time)
+        if (hasChanged) {
+          this.logger.log(`Lab test ${job.data.booking_id} has been rescheduled. Skipping reminder with old time.`)
+          return
+        }
     this.logger.log(`1-day Reminder: ${patient_name} has a lab test: ${test_name} tomorrow`)
     await this.createNotification(patient_id, `You have a lab test: ${test_name} tomorrow at ${scheduled_time} Location: ${location}`, 'Lab Test Reminder')
     await this.createNotification(technician_id, `You have a lab test: ${test_name} with ${patient_name} tomorrow at ${scheduled_time} Location: ${location}`, 'Lab Test Reminder')
@@ -36,6 +42,12 @@ export class LabsReminderService extends WorkerHost {
         
     } else if (job.name === 'thirtyMinReminder') {
       if (await this.isLabTestActive(job.data.booking_id)) {
+        // Check if lab test time has changed (rescheduled)
+        const hasChanged = await this.hasLabTestTimeChanged(job.data.booking_id, scheduled_date, scheduled_time)
+        if (hasChanged) {
+          this.logger.log(`Lab test ${job.data.booking_id} has been rescheduled. Skipping reminder with old time.`)
+          return
+        }
        this.logger.log(`30-min Reminder: ${patient_name} has a lab test: ${test_name}`)
        this.createNotification(patient_id, `You have a lab test: ${test_name} in 30 minutes`, 'Lab Test Reminder')
        this.createNotification(technician_id, `You have a lab test: ${test_name} with ${patient_name} in 30 minutes`, 'Lab Test Reminder')
@@ -84,6 +96,22 @@ export class LabsReminderService extends WorkerHost {
 
   return data?.status !== 'cancelled'
 }
+
+  private async hasLabTestTimeChanged(bookingId: string, scheduledDate: string, scheduledTime: string): Promise<boolean> {
+    const { data, error } = await this.supabase
+      .from('booked_lab_tests')
+      .select('scheduled_date, scheduled_time')
+      .eq('id', bookingId)
+      .single()
+
+    if (error) {
+      console.error('Error fetching lab test details:', error)
+      return false
+    }
+
+    // Compare the scheduled time in the job with current lab test time
+    return data?.scheduled_date !== scheduledDate || data?.scheduled_time !== scheduledTime
+  }
 
 
 }

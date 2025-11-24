@@ -23,6 +23,12 @@ export class ReminderService extends WorkerHost {
 
     if (job.name === 'oneDayReminder') {
       if (await this.isAppointmentActive(job.data.appointment_id)) {
+        // Check if appointment time has changed (rescheduled)
+        const hasChanged = await this.hasAppointmentTimeChanged(job.data.appointment_id, appointment_date, appointment_time)
+        if (hasChanged) {
+          this.logger.log(`Appointment ${job.data.appointment_id} has been rescheduled. Skipping reminder with old time.`)
+          return
+        }
     this.logger.log(`1-day Reminder: ${patient_name} has an appointment with ${doctor_name} tomorrow`)
     await this.createNotification(patient_id, `You have an appointment with ${doctor_name} tomorrow at ${appointment_time}`, 'Appointment Reminder')
     await this.createNotification(doctor_id, `You have an appointment with ${patient_name} tomorrow at ${appointment_time}`, 'Appointment Reminder')
@@ -47,6 +53,12 @@ export class ReminderService extends WorkerHost {
         
     } else if (job.name === 'thirtyMinReminder') {
       if (await this.isAppointmentActive(job.data.appointment_id)) {
+        // Check if appointment time has changed (rescheduled)
+        const hasChanged = await this.hasAppointmentTimeChanged(job.data.appointment_id, appointment_date, appointment_time)
+        if (hasChanged) {
+          this.logger.log(`Appointment ${job.data.appointment_id} has been rescheduled. Skipping reminder with old time.`)
+          return
+        }
        this.logger.log(`30-min Reminder: ${patient_name} has an appointment with ${doctor_name}`)
       this.createNotification(patient_id, `Reminder: You have an appointment with ${doctor_name} in 30 minutes`, 'Appointment Reminder')
       this.createNotification(doctor_id, `Reminder: You have an appointment with ${patient_name} in 30 minutes`, 'Appointment Reminder')
@@ -107,6 +119,25 @@ export class ReminderService extends WorkerHost {
 
   return data?.status !== 'cancelled'
 }
+
+  private async hasAppointmentTimeChanged(appointmentId: string, scheduledDate: string, scheduledTime: string): Promise<boolean> {
+    const { data, error } = await this.supabase
+      .from('appointments')
+      .select('appointment_date, appointment_time')
+      .eq('id', appointmentId)
+      .single()
+
+    if (error) {
+      console.error('Error fetching appointment details:', error)
+      return false
+    }
+
+    // Compare the scheduled time in the job with current appointment time
+    const currentDate = data?.appointment_date?.split('T')[0]
+    const jobDate = scheduledDate?.split('T')[0]
+    
+    return currentDate !== jobDate || data?.appointment_time !== scheduledTime
+  }
 
 
 }

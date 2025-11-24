@@ -19,6 +19,49 @@ export class SchedulerService {
 
 
 
+async removeScheduledJobs(appointmentId: string, queueType: 'appointment' | 'lab') {
+  try {
+    const queue = queueType === 'appointment' ? this.appointmentQueue : this.labQueue
+    
+    const jobs = await queue.getJobs(['delayed', 'waiting'])
+    const jobsToRemove = jobs.filter(job => job.data.appointment_id === appointmentId)
+    
+    for (const job of jobsToRemove) {
+      await job.remove()
+      this.logger.log(`Removed job ${job.id} for ${queueType} ${appointmentId}`)
+    }
+    
+    return jobsToRemove.length
+  } catch (error) {
+    this.logger.error(`Failed to remove scheduled jobs for ${appointmentId}`, error)
+    throw error
+  }
+}
+
+async handleAppointmentReschedule(data: AppointmentDto) {
+  const appointmentId = data.appointment_id
+  
+  // Remove all existing scheduled reminders for this appointment
+  const removedCount = await this.removeScheduledJobs(appointmentId, 'appointment')
+  this.logger.log(`Removed ${removedCount} scheduled jobs for rescheduled appointment ${appointmentId}`)
+  
+  // Schedule new reminders with updated time
+  await this.handleAppointment(data)
+  
+  // Send reschedule notifications
+  const { patient_id, doctor_id, patient_name, doctor_name, appointment_date, appointment_time } = data
+  await this.createNotification(
+    patient_id,
+    `Your appointment with ${doctor_name} has been rescheduled to ${appointment_date.split('T')[0]} at ${appointment_time}`,
+    'Appointment Rescheduled'
+  )
+  await this.createNotification(
+    doctor_id,
+    `Appointment with ${patient_name} has been rescheduled to ${appointment_date.split('T')[0]} at ${appointment_time}`,
+    'Appointment Rescheduled'
+  )
+}
+
 async handleAppointment(data:AppointmentDto) {
   const { patient_id, doctor_id, patient_name, doctor_name, appointment_date, appointment_time } = data
 
@@ -58,6 +101,30 @@ async handleAppointment(data:AppointmentDto) {
   await this.createNotification(doctor_id, `New appointment scheduled with ${patient_name} on ${appointment_date.split('T')[0]} at ${appointment_time}`,'New Appointment Booked' )
 }
 
+
+async handleLabBookingReschedule(data: LabBookingConfirmationDto) {
+  const bookingId = data.booking_id
+  
+  // Remove all existing scheduled reminders for this lab booking
+  const removedCount = await this.removeScheduledJobs(bookingId, 'lab')
+  this.logger.log(`Removed ${removedCount} scheduled jobs for rescheduled lab booking ${bookingId}`)
+  
+  // Schedule new reminders with updated time
+  await this.handleLabBooking(data)
+  
+  // Send reschedule notifications
+  const { patient_id, technician_id, patient_name, scheduled_date, scheduled_time, test_name, location } = data
+  await this.createNotification(
+    patient_id,
+    `Your Lab test: ${test_name} has been rescheduled to ${scheduled_date} at ${scheduled_time}. Location: ${location}`,
+    'Lab Test Rescheduled'
+  )
+  await this.createNotification(
+    technician_id,
+    `Lab Test: ${test_name} with ${patient_name} has been rescheduled to ${scheduled_date} at ${scheduled_time}`,
+    'Lab Test Rescheduled'
+  )
+}
 
 async handleLabBooking(data:LabBookingConfirmationDto) {
   const { patient_id,  patient_name, technician_id, location,scheduled_time,scheduled_date,patient_email,test_name} = data
