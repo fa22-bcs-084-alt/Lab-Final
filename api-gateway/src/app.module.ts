@@ -15,9 +15,10 @@ import { BlogCategoryModule } from './blog-category/blog-category.module';
 import { NutritionistsModule } from './nutritionists/nutritionists.module';
 import { WorkoutSessionsModule } from './workout-sessions/workout-sessions.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { NewsletterModule } from './newsletter/newsletter.module';
 
 @Module({
-  imports: [AuthModule, BookingsModule, LabTestsModule, MedicalRecordsModule, FitnessModule, AppointmentsModule, AnalyticsModule, DietPlanModule, CvModule, BlogPostModule, BlogCategoryModule, NutritionistsModule, WorkoutSessionsModule, NotificationsModule],
+  imports: [AuthModule, BookingsModule, LabTestsModule, MedicalRecordsModule, FitnessModule, AppointmentsModule, AnalyticsModule, DietPlanModule, CvModule, BlogPostModule, BlogCategoryModule, NutritionistsModule, WorkoutSessionsModule, NotificationsModule, NewsletterModule],
   controllers: [AppController],
   providers: [AppService],
 })

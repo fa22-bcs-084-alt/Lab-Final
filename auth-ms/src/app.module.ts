@@ -9,6 +9,7 @@ import { BlogPostModule } from './blog-post/blog-post.module';
 import { BlogCategoryModule } from './blog-category/blog-category.module';
 import { NutritionistsModule } from './nutritionists/nutritionists.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { NewsletterModule } from './newsletter/newsletter.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { NotificationsModule } from './notifications/notifications.module';
      BlogCategoryModule,
      NutritionistsModule,
      NotificationsModule,
+     NewsletterModule,
   ],
 })
 export class AppModule {}
