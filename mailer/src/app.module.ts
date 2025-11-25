@@ -6,13 +6,15 @@ import { ConfigModule } from '@nestjs/config'
 import { MailModule } from './mail/mail.module';
 import { LabsModule } from './labs/labs.module';
 import { NewsletterModule } from './newsletter/newsletter.module';
+import { CvModule } from './cv/cv.module';
 
 @Module({
   imports: [  ConfigModule.forRoot({ isGlobal: true }),
     AppointmentsModule,
     MailModule,
     LabsModule,
-    NewsletterModule],
+    NewsletterModule,
+    CvModule],
   controllers: [AppController],
   providers: [AppService],
 })

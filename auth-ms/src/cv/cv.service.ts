@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common'
+import { Inject, Injectable, NotFoundException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { SupabaseClient, createClient } from '@supabase/supabase-js'
 import { UploadApiResponse, v2 as cloudinary } from 'cloudinary'
@@ -6,6 +6,7 @@ import { Readable } from 'stream'
 import { CreateCvDto } from './dto/create-cv.dto'
 import { UpdateCvDto } from './dto/update-cv.dto'
 import { MailerService } from 'src/mailer-service/mailer-service.service'
+import { ClientProxy } from '@nestjs/microservices/client/client-proxy'
 
 @Injectable()
 export class CvService {
@@ -13,6 +14,7 @@ export class CvService {
 
   constructor(private configService: ConfigService,
     private mailer: MailerService,
+       @Inject('MAILER_SERVICE') private readonly mailerClient: ClientProxy,
   ) {
     this.supabase = createClient(
       this.configService.get<string>('SUPABASE_URL')!,
@@ -71,7 +73,10 @@ export class CvService {
     throw error
   }
 
+
   console.log('[CV MS] insert success:', data)
+
+  this.mailerClient.emit('cv-received', { email: dto.email })
   return data
 }
 
