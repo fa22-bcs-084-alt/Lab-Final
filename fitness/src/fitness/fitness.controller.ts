@@ -17,6 +17,8 @@ export class FitnessController {
   @MessagePattern({ cmd: 'getAllFitness' })
   async getAllFitness(@Payload() userId: string) {
     this.logger.log('[INFO FITNESS CONTROLLER] GetAll request received')
-    return this.fitnessService.getFitnessRecords(userId)
+    return this.fitnessService.getTodayFitnessData(userId)
   }
+
+
 }

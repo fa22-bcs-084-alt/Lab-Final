@@ -106,4 +106,61 @@ export class FitnessService {
     this.logger('[INFO FITNESS SERVICE] Records fetched successfully');
     return data;
   }
+
+  async getTodayFitnessData(userId: string) {
+    this.logger('[INFO FITNESS SERVICE] Fetching today\'s fitness data');
+
+    // Get current date in Asia/Karachi timezone
+    const now = new Date();
+    const karachiTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
+    
+    // Set to start of day in Karachi timezone
+    const todayStart = new Date(karachiTime);
+    todayStart.setHours(0, 0, 0, 0);
+    
+    // Set to end of day in Karachi timezone
+    const todayEnd = new Date(karachiTime);
+    todayEnd.setHours(23, 59, 59, 999);
+
+    // Convert to UTC for database query
+    const todayStartUTC = new Date(todayStart.toISOString());
+    const todayEndUTC = new Date(todayEnd.toISOString());
+
+    // Query for today's record
+    const { data, error } = await this.supabase
+      .from('fitness')
+      .select('*')
+      .eq('patient_id', userId)
+      .gte('created_at', todayStartUTC.toISOString())
+      .lte('created_at', todayEndUTC.toISOString())
+      .maybeSingle();
+
+    if (error) {
+      this.logger(
+        `[INFO FITNESS SERVICE] Failed to fetch today's data: ${error.message}`,
+      );
+      throw error;
+    }
+
+    // Return data with default values if no record exists for today
+    if (!data) {
+      this.logger('[INFO FITNESS SERVICE] No data for today, returning default values');
+      return [{
+        id: null,
+        created_at: null,
+        patient_id: userId,
+        steps: 0,
+        water: 0,
+        sleep: 0,
+        calories_burned: 0,
+        calories_intake: 0,
+        fat: 0,
+        protein: 0,
+        carbs: 0,
+      }];
+    }
+
+    this.logger('[INFO FITNESS SERVICE] Today\'s data fetched successfully');
+    return data;
+  }
 }
