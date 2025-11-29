@@ -215,125 +215,143 @@ export class FitbitService {
   }
 
   /**
-   * Fetch all data for a user and save to fitness table (update same record for today)
+   * Fetch water intake data
+   * Returns water intake in ml for the given date
    */
-  async fetchAndSaveAllData(userId: string) {
+  async fetchWaterIntake(userId: string, date: string = 'today') {
+    const accessToken = await this.getValidAccessToken(userId)
+
     try {
-
-
-       // Get today's date start in Karachi timezone (Asia/Karachi)
-      const karachiDate = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' }))
-      const todayStartKarachi = new Date(karachiDate.getFullYear(), karachiDate.getMonth(), karachiDate.getDate())
-      const today = new Date(todayStartKarachi.toISOString())
-
-
-      console.log(`\n🔍 [FITBIT SERVICE] Starting fetch for user: ${userId}`)
-
-      const [activity, heartRate, sleepData] = await Promise.all([
-        this.fetchDailyActivity(userId, today.toISOString().split('T')[0]),
-        this.fetchHeartRate(userId, today.toISOString().split('T')[0]),
-        this.fetchSleepData(userId, today.toISOString().split('T')[0]),
-      ])
-
-
-      // Get current totals from Fitbit
-      const currentSteps = activity.steps || 0
-      const currentCalories = activity.activityCalories || 0
-      const totalSleepMinutes = sleepData.summary?.totalMinutesAsleep || 0
-      const currentSleepHours = totalSleepMinutes / 60
-
-
-      console.log(`📊 Fetched Fitbit Data:`, JSON.stringify(sleepData,null,2))
-
-      console.log(`📊 Current Fitbit Totals:`, {
-        steps: currentSteps,
-        calories: currentCalories,
-        sleep: `${currentSleepHours.toFixed(2)} hours`
-      })
-
-
-      // Check if there's already a record for today
-      const { data: existingRecord } = await this.supabase.getClient()
-        .from('fitness')
-        .select('*')
-        .eq('patient_id', userId)
-        .gte('created_at', today.toISOString())
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single()
-
-      console.log(`📋 Existing record for today:`, existingRecord || 'None')
-
-      if (existingRecord) {
-        
-        const oldSteps = existingRecord.steps || 0
-        const oldCalories = existingRecord.walk_calories_burned || 0
-        const oldSleep = existingRecord.sleep || 0
-
-        console.log(`📊 Old values in DB:`, {
-          steps: oldSteps,
-          calories: oldCalories,
-          sleep: `${oldSleep.toFixed(2)} hours`
-        })
-
-        // Check if values changed
-        if (currentSteps !== oldSteps || currentCalories !== oldCalories || currentSleepHours !== oldSleep) {
-          console.log(`🔄 Values changed! Updating record...`)
-
-          const { data, error } = await this.supabase.getClient()
-            .from('fitness')
-            .update({
-              steps: currentSteps,
-              walk_calories_burned: currentCalories,
-              sleep: currentSleepHours,
-            })
-            .eq('id', existingRecord.id)
-            .select()
-
-          if (error) {
-            console.error(`❌ Failed to update fitness data:`, error)
-            this.logger.error(`Failed to update fitness data: ${error.message}`)
-            throw error
-          }
-
-      
-          this.logger.log(`✅ Fitbit data updated in fitness table for user ${userId}`)
-        
-        } else {
-          this.logger.log(`ℹ️ No changes detected for user ${userId}, skipping update`)
+      const response = await axios.get(
+        `${this.FITBIT_API_BASE}/1/user/-/foods/log/water/date/${date}.json`,
+        {
+          headers: { Authorization: `Bearer ${accessToken}` },
         }
-      } else {
-        
-        console.log(`✅ No record for today. Creating new record...`)
+      )
 
-        const { data, error } = await this.supabase.getClient()
-          .from('fitness')
-          .insert({
-            patient_id: userId,
-            steps: currentSteps,
-            walk_calories_burned: currentCalories,
-            sleep: currentSleepHours,
-            created_at: new Date().toISOString(),
-          })
-          .select()
-
-        if (error) {
-          console.error(`❌ Failed to insert fitness data:`, error)
-          this.logger.error(`Failed to insert fitness data: ${error.message}`)
-          throw error
-        }
-
-       
-        this.logger.log(`✅ Fitbit data inserted into fitness table for user ${userId}`)
-      
-      }
-
-      console.log(`\n✨ Finished processing user: ${userId}\n`)
-      return { activity, heartRate, sleepData }
+      return response.data
     } catch (error) {
-      console.error(`❌ Error in fetchAndSaveAllData:`, error)
-      this.logger.error(`Failed to fetch and save data for user ${userId}: ${error.message}`)
+      this.logger.error(`Failed to fetch water intake: ${error.message}`)
       throw error
     }
   }
+
+  /**
+   * Fetch all data for a user and save to fitness table (update same record for today)
+   */
+async fetchAndSaveAllData(userId: string) {
+  try {
+
+    const karachiNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' }))
+
+    const yyyy = karachiNow.getFullYear()
+    const mm = String(karachiNow.getMonth() + 1).padStart(2, '0')
+    const dd = String(karachiNow.getDate()).padStart(2, '0')
+
+    const karachiDateString = `${yyyy}-${mm}-${dd}`
+
+    const todayStartKarachi = new Date(`${karachiDateString}T00:00:00+05:00`)
+    const todayEndKarachi = new Date(`${karachiDateString}T23:59:59+05:00`)
+
+    console.log(`\n🔍 [FITBIT SERVICE] Starting fetch for user: ${userId} date: ${karachiDateString}`)
+
+    const [activity, heartRate, sleepData, waterData] = await Promise.all([
+      this.fetchDailyActivity(userId, karachiDateString),
+      this.fetchHeartRate(userId, karachiDateString),
+      this.fetchSleepData(userId, karachiDateString),
+      this.fetchWaterIntake(userId, karachiDateString),
+    ])
+
+    const currentSteps = activity.steps || 0
+    const currentCalories = activity.activityCalories || 0
+    const totalSleepMinutes = sleepData.summary?.totalMinutesAsleep || 0
+    const currentSleepHours = totalSleepMinutes / 60
+    const waterInMl = waterData.summary?.water || 0
+    const currentWaterIntake = waterInMl / 1000 // convert ml to litres
+
+    
+    console.log(`📊 Current Fitbit Totals:`, {
+      steps: currentSteps,
+      calories: currentCalories,
+      sleep: `${currentSleepHours.toFixed(2)} hours`,
+      water: `${currentWaterIntake.toFixed(2)} litres`
+    })
+
+    const { data: existingRecord } = await this.supabase.getClient()
+      .from('fitness')
+      .select('*')
+      .eq('patient_id', userId)
+      .gte('created_at', todayStartKarachi.toISOString())
+      .lte('created_at', todayEndKarachi.toISOString())
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single()
+
+    console.log(`📋 Existing record for today:`, existingRecord || 'None')
+
+    if (existingRecord) {
+
+      const oldSteps = existingRecord.steps || 0
+      const oldCalories = existingRecord.walk_calories_burned || 0
+      const oldSleep = existingRecord.sleep || 0
+
+      console.log(`📊 Old values in DB:`, {
+        steps: oldSteps,
+        calories: oldCalories,
+        sleep: `${oldSleep.toFixed(2)} hours`
+      })
+
+      if (currentSteps !== oldSteps || currentCalories !== oldCalories || currentSleepHours !== oldSleep || currentWaterIntake.toFixed(2) !== existingRecord.water) {
+
+        console.log(`🔄 Values changed! Updating record...`)
+
+        const { error } = await this.supabase.getClient()
+          .from('fitness')
+          .update({
+            water:currentWaterIntake.toFixed(2),
+            steps: currentSteps,
+            walk_calories_burned: currentCalories,
+            sleep: currentSleepHours.toFixed(2),
+          })
+          .eq('id', existingRecord.id)
+          .select()
+
+        if (error) throw error
+
+        this.logger.log(`✅ Fitbit data updated in fitness table for user ${userId}`)
+      } else {
+        this.logger.log(`ℹ️ No changes detected for user ${userId}`)
+      }
+
+    } else {
+
+      console.log(`✅ No record for today. Creating new record...`)
+
+      const { error } = await this.supabase.getClient()
+        .from('fitness')
+        .insert({
+          patient_id: userId,
+          steps: currentSteps,
+          water:currentWaterIntake.toFixed(2),
+          walk_calories_burned: currentCalories,
+          sleep: currentSleepHours.toFixed(2),
+          created_at: todayStartKarachi.toISOString(),
+        })
+        .select()
+
+      if (error) throw error
+
+      this.logger.log(`✅ Fitbit data inserted into fitness table for user ${userId}`)
+    }
+
+    console.log(`\n✨ Finished processing user: ${userId}\n`)
+    return { activity, heartRate, sleepData, waterData }
+
+  } catch (error) {
+    console.error(`❌ Error in fetchAndSaveAllData:`, error)
+    this.logger.error(error.message)
+    throw error
+  }
+}
+
 }
