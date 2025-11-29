@@ -1,0 +1,138 @@
+╔══════════════════════════════════════════════════════════════════╗
+║           FITBIT INTEGRATION - QUICK REFERENCE                   ║
+╚══════════════════════════════════════════════════════════════════╝
+
+📋 BACKEND SETUP CHECKLIST
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ Dependencies installed (passport-fitbit-oauth2, @nestjs/schedule, axios)
+✅ Fitbit strategy created (src/auth/fitbit.strategy.ts)
+✅ Fitbit service created (src/fitbit/fitbit.service.ts)
+✅ Fitbit scheduler created (src/fitbit/fitbit.scheduler.ts)
+✅ Auth controller updated with /fitbit routes
+✅ Auth service updated with Fitbit methods
+✅ Auth module registered FitbitStrategy
+✅ App module imported ScheduleModule & FitbitModule
+✅ Environment variables added to .env
+
+🔧 SETUP STEPS (DO THIS NOW)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. Register Fitbit App:
+   → Go to: https://dev.fitbit.com/apps/new
+   → Callback URL: http://localhost:4001/auth/fitbit/callback
+   → Type: Server
+   → Copy Client ID & Secret
+
+2. Update .env file:
+   FITBIT_CLIENT_ID=your_client_id_here
+   FITBIT_CLIENT_SECRET=your_client_secret_here
+   FITBIT_CALLBACK_URL=http://localhost:4001/auth/fitbit/callback
+
+3. Create Supabase Tables:
+   → Open Supabase Dashboard → SQL Editor
+   → Copy & run SQL from: SUPABASE_FITBIT_TABLE.sql
+
+4. Start Server:
+   npm run start:dev
+
+📡 API ENDPOINTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+GET  /auth/fitbit              → Start OAuth flow
+GET  /auth/fitbit/callback     → OAuth callback handler
+
+🗄️ SUPABASE TABLES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+fitbit_tokens           → Stores OAuth access & refresh tokens
+fitbit_activity_data    → Stores daily health data (steps, calories, etc.)
+
+⏰ CRON JOB
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Schedule: Every 30 minutes (0, 30 * * * *)
+Action:   Fetches Fitbit data for ALL users with tokens
+Data:     Steps, calories, heart rate, sleep, distance, active minutes
+Output:   Prints to console and saves to fitbit_activity_data table
+
+💻 FRONTEND INTEGRATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Send this file to your frontend developer:
+→ FRONTEND_FITBIT_INTEGRATION_GUIDE.md
+
+Quick Example:
+<button onClick={() => {
+  const token = localStorage.getItem('authToken')
+  window.location.href = `http://localhost:4001/auth/fitbit?state=${token}`
+}}>
+  Connect with Fitbit
+</button>
+
+🔄 OAUTH FLOW
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. Frontend → http://localhost:4001/auth/fitbit?state={jwt}
+2. Backend → Redirect to Fitbit authorization
+3. User → Authorizes app on Fitbit
+4. Fitbit → Callback to backend with code
+5. Backend → Exchange code for tokens
+6. Backend → Save tokens to Supabase
+7. Backend → Redirect to frontend/patient/dashboard?fitbit=connected
+8. Frontend → Show success message
+
+📊 DATA COLLECTED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Steps (daily count)
+• Calories burned
+• Distance traveled (km)
+• Active minutes (fairly + very active)
+• Heart rate zones
+• Resting heart rate
+• Sleep duration & quality
+• Weight & BMI (if available)
+
+📁 FILES CREATED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+src/auth/fitbit.strategy.ts            → OAuth strategy
+src/fitbit/fitbit.service.ts           → API calls & token management
+src/fitbit/fitbit.module.ts            → Module config
+src/fitbit/fitbit.scheduler.ts         → Cron job
+SUPABASE_FITBIT_TABLE.sql              → Database schema
+FRONTEND_FITBIT_INTEGRATION_GUIDE.md   → Frontend guide (send this!)
+FITBIT_SETUP_README.md                 → Complete documentation
+
+🧪 TESTING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. Start server: npm run start:dev
+2. Get JWT token from login
+3. Visit: http://localhost:4001/auth/fitbit?state={your_jwt_token}
+4. Authorize on Fitbit
+5. Check redirect to dashboard
+6. Verify tokens in Supabase fitbit_tokens table
+7. Wait 30 min or check logs for cron job execution
+8. Verify data in fitbit_activity_data table
+
+🐛 TROUBLESHOOTING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Issue: OAuth fails
+→ Check callback URL matches Fitbit app settings exactly
+→ Verify FITBIT_CLIENT_ID and SECRET in .env
+
+Issue: No data fetched
+→ Check if users exist in fitbit_tokens table
+→ Verify cron job is running (check logs)
+→ Test token refresh
+
+Issue: Callback error
+→ Ensure JWT token is valid
+→ Check backend logs for errors
+
+🎯 PRODUCTION CHECKLIST
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+□ Update Fitbit app callback URL to production domain
+□ Use HTTPS for all endpoints
+□ Set production environment variables
+□ Enable Supabase RLS policies
+□ Implement rate limiting
+□ Add error monitoring (Sentry, etc.)
+□ Test token refresh mechanism
+□ Verify cron job runs correctly
+
+═══════════════════════════════════════════════════════════════════
+              🎉 FITBIT INTEGRATION COMPLETE! 🎉
+═══════════════════════════════════════════════════════════════════

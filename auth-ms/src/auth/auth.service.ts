@@ -11,6 +11,7 @@ import { InjectModel } from '@nestjs/mongoose'
 import { Profile, ProfileDocument } from 'src/schema/patient.profile.schema'
 import { Model } from 'mongoose'
 import { NutritionistProfile, NutritionistProfileDocument } from 'src/schema/nutritionist-profile.schema'
+import { FitbitService } from '../fitbit/fitbit.service'
 
 @Injectable()
 export class AuthService {
@@ -21,6 +22,7 @@ export class AuthService {
     private configService: ConfigService,
     @InjectModel(Profile.name) private profileModel: Model<ProfileDocument>,
     @InjectModel(NutritionistProfile.name) private nutModel:Model<NutritionistProfileDocument>,
+    private fitbitService: FitbitService,
   ) {
     cloudinary.config({
       cloud_name: this.configService.get<string>('CLOUDINARY_CLOUD_NAME'),
@@ -259,6 +261,92 @@ export class AuthService {
 
     console.log(`[INFO: AUTH SERVICE] Google user created: ${profile.emails[0].value}`)
     return { ...data, success: true, message: 'User created successfully' }
+  }
+
+  /**
+   * Handle Fitbit OAuth callback - save tokens
+   */
+  async handleFitbitCallback(userId: string, fitbitData: any) {
+    console.log(`[INFO: AUTH SERVICE] Handling Fitbit callback for user ${userId}`)
+    
+    const { fitbitId, accessToken, refreshToken } = fitbitData
+    const expiresIn = 28800 // Fitbit tokens expire in 8 hours (28800 seconds)
+
+    await this.fitbitService.saveTokens(userId, fitbitId, accessToken, refreshToken, expiresIn)
+
+    console.log(`[INFO: AUTH SERVICE] Fitbit tokens saved for user ${userId}`)
+    return { success: true, message: 'Fitbit connected successfully' }
+  }
+
+  /**
+   * Get user by email
+   */
+  async getUserByEmail(email: string) {
+    console.log(`[INFO: AUTH SERVICE] Getting user by email: ${email}`)
+    const { data, error } = await this.supabase.getClient()
+      .from('users')
+      .select('*')
+      .eq('email', email)
+      .single()
+
+    if (error || !data) {
+      console.error(`[INFO: AUTH SERVICE] User not found: ${email}`)
+      return null
+    }
+
+    return data
+  }
+
+  /**
+   * Get real-time Fitbit data for a user (no database storage)
+   */
+  async getFitbitDataForUser(userId: string) {
+    console.log(`[INFO: AUTH SERVICE] Fetching real-time Fitbit data for user ${userId}`)
+    
+    try {
+      const data = await this.fitbitService.fetchAndSaveAllData(userId)
+      return data
+    } catch (error) {
+      console.error(`[INFO: AUTH SERVICE] Failed to fetch Fitbit data for user ${userId}:`, error.message)
+      throw new Error(`Failed to fetch Fitbit data: ${error.message}`)
+    }
+  }
+
+  /**
+   * Get real-time Fitbit data for all users with tokens
+   */
+  async getAllUsersFitbitData() {
+    console.log(`[INFO: AUTH SERVICE] Fetching real-time Fitbit data for all users`)
+    
+    const users = await this.fitbitService.getAllUsersWithTokens()
+    
+    if (!users || users.length === 0) {
+      return []
+    }
+
+    const allData: any[] = []
+    
+    for (const user of users) {
+      try {
+        const data = await this.fitbitService.fetchAndSaveAllData(user.user_id)
+        allData.push({
+          userId: user.user_id,
+          fitbitUserId: user.fitbit_user_id,
+          data,
+          fetchedAt: new Date().toISOString()
+        })
+      } catch (error) {
+        console.error(`[INFO: AUTH SERVICE] Failed to fetch data for user ${user.user_id}:`, error.message)
+        allData.push({
+          userId: user.user_id,
+          fitbitUserId: user.fitbit_user_id,
+          error: error.message,
+          fetchedAt: new Date().toISOString()
+        })
+      }
+    }
+
+    return allData
   }
 
 

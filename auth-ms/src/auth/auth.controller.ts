@@ -32,6 +32,69 @@ async googleCallback(@Req() req, @Res() res: Response) {
   res.redirect(`${process.env.APP_URL}/?token=${token.accessToken}`)
 }
 
+  // === Fitbit OAuth Routes ===
+  @Get('fitbit')
+  async fitbitAuth(@Req() req, @Res() res: Response) {
+    // Get the user's email from query parameter
+    const userEmail = req.query.email as string
+    
+    if (!userEmail) {
+      return res.redirect(`${process.env.APP_URL}?error=no_email`)
+    }
+
+    // Verify user exists
+    const user = await this.auth.getUserByEmail(userEmail)
+    if (!user) {
+      return res.redirect(`${process.env.APP_URL}?error=user_not_found`)
+    }
+
+    // Build Fitbit OAuth URL with state parameter containing the user email
+    const callbackUrl = process.env.FITBIT_CALLBACK_URL || 'http://localhost:4001/auth/fitbit/callback'
+    const fitbitAuthUrl = `https://www.fitbit.com/oauth2/authorize?` +
+      `response_type=code&` +
+      `client_id=${process.env.FITBIT_CLIENT_ID}&` +
+      `redirect_uri=${encodeURIComponent(callbackUrl)}&` +
+      `scope=activity%20heartrate%20location%20nutrition%20profile%20settings%20sleep%20social%20weight&` +
+      `state=${encodeURIComponent(userEmail)}`
+
+    res.redirect(fitbitAuthUrl)
+  }
+
+  @Get('fitbit/callback')
+  @UseGuards(AuthGuard('fitbit'))
+  async fitbitCallback(@Req() req, @Res() res: Response) {
+    const fitbitUser = req.user
+    console.log("Fitbit OAuth user=", fitbitUser)
+
+    // Extract the user's email from state parameter
+    const userEmail = req.query.state as string
+
+    if (!userEmail) {
+      console.error('No email provided in Fitbit OAuth flow')
+      return res.redirect(`${process.env.APP_URL}?error=authentication_failed`)
+    }
+
+    try {
+      // Get user by email
+      const user = await this.auth.getUserByEmail(userEmail)
+      if (!user) {
+        console.error('❌ User not found in database:', userEmail)
+        return res.redirect(`${process.env.APP_URL}?error=user_not_found&message=Please signup first`)
+      }
+
+      const userId = user.id
+      console.log('✅ User found, ID:', userId)
+
+      // Save Fitbit tokens
+      await this.auth.handleFitbitCallback(userId, fitbitUser)
+      console.log('✅ Fitbit tokens saved successfully for user:', userId)
+      res.redirect(`${process.env.APP_URL}?fitbit=connected`)
+    } catch (error) {
+      console.error('❌ Failed to save Fitbit tokens:', error)
+      res.redirect(`${process.env.APP_URL}?error=fitbit_save_failed&message=Database error`)
+    }
+  }
+
   // === Microservice patterns ===
   @MessagePattern({ cmd: 'register' })
   async registerMs(data: { email: string; password: string }) {
@@ -90,5 +153,45 @@ async upsertUserProfile(payload: { role: string; profileData: Record<string, any
   @MessagePattern({ cmd: 'me' })
   async meMs(token: string) {
     return this.jwt.verify(token)
+  }
+
+  // === Test Route: Get Fitbit Data for Any User ===
+  @Get('fitbit/test/:userId')
+  async testFitbitData(@Req() req, @Res() res: Response) {
+    const userId = req.params.userId
+
+    try {
+      const data = await this.auth.getFitbitDataForUser(userId)
+      return res.json({
+        success: true,
+        userId,
+        data,
+        message: 'Real-time Fitbit data fetched successfully'
+      })
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        error: error.message
+      })
+    }
+  }
+
+  // === Get All Users Fitbit Data ===
+  @Get('fitbit/test-all')
+  async testAllUsersFitbitData(@Req() req, @Res() res: Response) {
+    try {
+      const allData = await this.auth.getAllUsersFitbitData()
+      return res.json({
+        success: true,
+        totalUsers: allData.length,
+        data: allData,
+        message: 'Real-time Fitbit data fetched for all users'
+      })
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        error: error.message
+      })
+    }
   }
 }
