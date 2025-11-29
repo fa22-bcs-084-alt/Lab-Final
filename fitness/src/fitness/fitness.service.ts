@@ -160,6 +160,8 @@ export class FitnessService {
       }];
     }
 
+    data.calories_burned = (data.calories_burned || 0) + (data.walk_calories_burned || 0);
+
     this.logger('[INFO FITNESS SERVICE] Today\'s data fetched successfully');
     return data;
   }

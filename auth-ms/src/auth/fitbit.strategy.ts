@@ -9,7 +9,7 @@ export class FitbitStrategy extends PassportStrategy(FitbitOAuth2Strategy, 'fitb
       clientID: process.env.FITBIT_CLIENT_ID,
       clientSecret: process.env.FITBIT_CLIENT_SECRET,
       callbackURL: process.env.FITBIT_CALLBACK_URL,
-      scope: ['activity', 'heartrate', 'location', 'nutrition', 'profile', 'settings', 'sleep', 'social', 'weight'],
+      scope: ['activity', 'heartrate', 'location', 'nutrition', 'profile', 'settings', 'sleep', 'social'],
     })
   }
 
