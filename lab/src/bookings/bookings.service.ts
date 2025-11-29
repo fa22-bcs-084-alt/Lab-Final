@@ -1392,8 +1392,21 @@ async uploadResult(
   if (error) throw new Error(error.message);
   this.logger(`Fetched ${data.length} bookings for technician ID=${techId}`);
 
+  // Fetch patient profiles from MongoDB for all unique patient IDs
+  const patientIds = [...new Set(data.map((item: any) => item.patient?.id).filter(Boolean))];
+  const patientProfiles = await this.profileModel
+    .find({ id: { $in: patientIds } })
+    .lean()
+    .exec();
+  
+  // Create a map for quick lookup
+  const profileMap = new Map(patientProfiles.map((p: any) => [p.id, p]));
+  this.logger(`Fetched ${patientProfiles.length} patient profiles from MongoDB`);
+
   const bookings = data.map((item: any) => {
     const medicalRecord = item.status === 'completed' ? item.medical_records?.[0] : null;
+    const patientProfile = profileMap.get(item.patient?.id) as any;
+    
     return {
       id: item.id,
       testId: item.test_id,
@@ -1405,10 +1418,20 @@ async uploadResult(
       bookedAt: item.booked_at,
       location: item.location || "",
       instructions: item.instructions || undefined,
-      patientName: item.patient?.email || "Unknown",
       type: item.test?.record_type || "lab-result",
       uploadedAt: medicalRecord?.date ? new Date(medicalRecord.date) : undefined,
-      reportFile: medicalRecord?.file_url || undefined
+      reportFile: medicalRecord?.file_url || undefined,
+      // Patient details from MongoDB profile
+      patientId: item.patient?.id || "",
+      patientEmail: item.patient?.email || "",
+      patientName: patientProfile?.name || "Unknown",
+      patientPhone: patientProfile?.phone || "",
+      patientGender: patientProfile?.gender || "",
+      patientDateOfBirth: patientProfile?.dateOfBirth || "",
+      patientBloodType: patientProfile?.bloodType || "",
+      patientAllergies: patientProfile?.allergies || "",
+      patientConditions: patientProfile?.conditions || "",
+     
     };
   });
 
