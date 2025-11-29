@@ -155,43 +155,6 @@ async upsertUserProfile(payload: { role: string; profileData: Record<string, any
     return this.jwt.verify(token)
   }
 
-  // === Test Route: Get Fitbit Data for Any User ===
-  @Get('fitbit/test/:userId')
-  async testFitbitData(@Req() req, @Res() res: Response) {
-    const userId = req.params.userId
 
-    try {
-      const data = await this.auth.getFitbitDataForUser(userId)
-      return res.json({
-        success: true,
-        userId,
-        data,
-        message: 'Real-time Fitbit data fetched successfully'
-      })
-    } catch (error) {
-      return res.status(400).json({
-        success: false,
-        error: error.message
-      })
-    }
-  }
 
-  // === Get All Users Fitbit Data ===
-  @Get('fitbit/test-all')
-  async testAllUsersFitbitData(@Req() req, @Res() res: Response) {
-    try {
-      const allData = await this.auth.getAllUsersFitbitData()
-      return res.json({
-        success: true,
-        totalUsers: allData.length,
-        data: allData,
-        message: 'Real-time Fitbit data fetched for all users'
-      })
-    } catch (error) {
-      return res.status(400).json({
-        success: false,
-        error: error.message
-      })
-    }
-  }
 }

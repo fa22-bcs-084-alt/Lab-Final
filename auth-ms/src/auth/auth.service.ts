@@ -297,57 +297,8 @@ export class AuthService {
     return data
   }
 
-  /**
-   * Get real-time Fitbit data for a user (no database storage)
-   */
-  async getFitbitDataForUser(userId: string) {
-    console.log(`[INFO: AUTH SERVICE] Fetching real-time Fitbit data for user ${userId}`)
-    
-    try {
-      const data = await this.fitbitService.fetchAndSaveAllData(userId)
-      return data
-    } catch (error) {
-      console.error(`[INFO: AUTH SERVICE] Failed to fetch Fitbit data for user ${userId}:`, error.message)
-      throw new Error(`Failed to fetch Fitbit data: ${error.message}`)
-    }
-  }
 
-  /**
-   * Get real-time Fitbit data for all users with tokens
-   */
-  async getAllUsersFitbitData() {
-    console.log(`[INFO: AUTH SERVICE] Fetching real-time Fitbit data for all users`)
-    
-    const users = await this.fitbitService.getAllUsersWithTokens()
-    
-    if (!users || users.length === 0) {
-      return []
-    }
 
-    const allData: any[] = []
-    
-    for (const user of users) {
-      try {
-        const data = await this.fitbitService.fetchAndSaveAllData(user.user_id)
-        allData.push({
-          userId: user.user_id,
-          fitbitUserId: user.fitbit_user_id,
-          data,
-          fetchedAt: new Date().toISOString()
-        })
-      } catch (error) {
-        console.error(`[INFO: AUTH SERVICE] Failed to fetch data for user ${user.user_id}:`, error.message)
-        allData.push({
-          userId: user.user_id,
-          fitbitUserId: user.fitbit_user_id,
-          error: error.message,
-          fetchedAt: new Date().toISOString()
-        })
-      }
-    }
-
-    return allData
-  }
 
 
   async getUserByRoleAndId(role: string, id: string) {

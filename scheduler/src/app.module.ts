@@ -6,10 +6,14 @@ import { ConfigModule } from '@nestjs/config/dist/config.module';
 import { ReminderModule } from './reminder/reminder.module';
 import { BullModule } from '@nestjs/bullmq'
 import { LabsReminderModule } from './labs-reminder/labs-reminder.module';
+import { ScheduleModule } from '@nestjs/schedule';
+import { FitbitModule } from './fitbit/fitbit.module';
 
 
 @Module({
-  imports: [SchedulerModule,
+  imports: [
+     ScheduleModule.forRoot(),
+    SchedulerModule,
      ConfigModule.forRoot({
       isGlobal: true,
     }),
@@ -21,6 +25,7 @@ import { LabsReminderModule } from './labs-reminder/labs-reminder.module';
       },
     }),
       LabsReminderModule,
+      FitbitModule,
   
   ],
   controllers: [AppController],
