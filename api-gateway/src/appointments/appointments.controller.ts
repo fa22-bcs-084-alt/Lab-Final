@@ -6,6 +6,7 @@ import { AppointmentMode, AppointmentStatus, AppointmentTypes } from './appointm
 import { CompleteNutritionistAppointmentDto } from './dto/complete-nutritionist-appointment.dto'
 import { firstValueFrom } from 'rxjs'
 import { AvailableSlotsQueryDto } from './dto/available-slots.dto'
+import { CancelAppointmentDto } from './dto/cancel-appointment.dto'
 
 @Controller('appointments')
 export class AppointmentsController {
@@ -86,6 +87,20 @@ async getAvailableSlots(@Query() query: AvailableSlotsQueryDto) {
     @Body() body: { dto: CompleteNutritionistAppointmentDto; nutritionistId: string },
   ) {
     return this.client.send({ cmd: 'complete_nutritionist_appointment' }, { id, ...body })
+  }
+
+  @Patch(':id/cancel')
+  async cancelAppointment(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: CancelAppointmentDto,
+  ) {
+    console.log('Cancel appointment request body:', JSON.stringify(body, null, 2))
+    const { nutritionistId, reason, notes, cancelledBy } = body
+    const dto = { reason, notes, cancelledBy }
+    console.log('Sending to microservice:', { id, dto, nutritionistId })
+    return firstValueFrom(
+      this.client.send({ cmd: 'cancel_appointment' }, { id, dto, nutritionistId })
+    )
   }
 
    

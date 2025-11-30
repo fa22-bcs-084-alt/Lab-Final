@@ -2,8 +2,20 @@ import { AppointmentCancellationDto } from "src/appointments/dto/appointment-can
 
 export const HYGIEIA_LOGO = "https://hygieia-frontend.vercel.app/_next/image?url=%2Flogo%2Flogo-2.png&w=128&q=90"
 
+// Map reason codes to display labels
+const REASON_LABELS: Record<string, string> = {
+  'emergency': 'Personal Emergency',
+  'scheduling': 'Scheduling Conflict',
+  'patient-request': 'Patient Requested',
+  'unavailable': 'Unavailable at Scheduled Time',
+  'other': 'Other',
+}
+
 export function generateAppointmentCancellationEmail(data: AppointmentCancellationDto): string {
-  const { patient_name, doctor_name, appointment_date, appointment_time, patient_email, appointment_mode, cancellation_date, appointment_id } = data;
+  const { patient_name, doctor_name, appointment_date, appointment_time, patient_email, appointment_mode, cancellation_date, appointment_id, cancellation_reason, cancellation_notes } = data;
+  
+  // Get display label for reason
+  const reasonDisplay = cancellation_reason ? (REASON_LABELS[cancellation_reason] || cancellation_reason) : 'Not specified';
   return `
   <!doctype html>
   <html lang="en">
@@ -78,6 +90,8 @@ export function generateAppointmentCancellationEmail(data: AppointmentCancellati
                           <tr><td><p><strong>Originally Scheduled Time:</strong> ${appointment_time}</p></td></tr>
                           <tr><td><p><strong>Mode:</strong> ${appointment_mode}</p></td></tr>
                           <tr><td><p><strong>Cancellation Date:</strong> ${cancellation_date}</p></td></tr>
+                          <tr><td><p><strong>Reason:</strong> ${reasonDisplay}</p></td></tr>
+                          ${cancellation_notes ? `<tr><td><p><strong>Additional Notes:</strong> ${cancellation_notes}</p></td></tr>` : ''}
                           <tr><td><p><strong>Email:</strong> ${patient_email}</p></td></tr>
                         </table>
 

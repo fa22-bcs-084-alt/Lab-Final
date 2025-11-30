@@ -5,6 +5,16 @@ import { InjectQueue } from '@nestjs/bullmq'
 import { Queue } from 'bullmq'
 import { AppointmentDto } from 'src/dto/appointment.dto'
 import { LabBookingConfirmationDto } from 'src/dto/lab-booking-confirmation.dto'
+import { AppointmentCancellationDto } from 'src/dto/appointment-cancellation.dto'
+
+// Map reason codes to display labels
+const REASON_LABELS: Record<string, string> = {
+  'emergency': 'Personal Emergency',
+  'scheduling': 'Scheduling Conflict',
+  'patient-request': 'Patient Requested',
+  'unavailable': 'Unavailable at Scheduled Time',
+  'other': 'Other',
+}
 
 @Injectable()
 export class SchedulerService {
@@ -166,6 +176,47 @@ console.log('lab DateTime (UTC):', appointmentDateTime.toISOString())
 
   await this.createNotification(patient_id, `Your Lab test: ${test_name} booked for ${scheduled_date.split('T')[0]} at ${scheduled_time}  Location: ${location}`,'New Lab Test Booked' )
   await this.createNotification(technician_id, `New Lab Test: ${test_name} scheduled with ${patient_name} on ${scheduled_date.split('T')[0]} at ${scheduled_time}`,'New Lab Test Booked' )
+}
+
+
+async handleAppointmentCancellation(data: AppointmentCancellationDto) {
+  const { 
+    appointment_id, 
+    patient_id, 
+    doctor_id, 
+    patient_name, 
+    doctor_name, 
+    appointment_date, 
+    appointment_time,
+    cancellation_reason,
+    cancellation_notes 
+  } = data
+
+  this.logger.log(`Handling appointment cancellation for ${appointment_id}`)
+
+  // Remove any scheduled reminders for this appointment
+  const removedCount = await this.removeScheduledJobs(appointment_id, 'appointment')
+  this.logger.log(`Removed ${removedCount} scheduled reminder jobs for cancelled appointment ${appointment_id}`)
+
+  // Get display label for reason
+  const reasonDisplay = cancellation_reason ? (REASON_LABELS[cancellation_reason] || cancellation_reason) : 'Not specified'
+  const notesText = cancellation_notes ? ` Notes: ${cancellation_notes}` : ''
+
+  // Send notification to patient
+  await this.createNotification(
+    patient_id,
+    `Your appointment with ${doctor_name} scheduled for ${appointment_date.split('T')[0]} at ${appointment_time} has been cancelled. Reason: ${reasonDisplay}.${notesText}`,
+    'Appointment Cancelled'
+  )
+
+  // Send notification to doctor/nutritionist
+  await this.createNotification(
+    doctor_id,
+    `Appointment with ${patient_name} scheduled for ${appointment_date.split('T')[0]} at ${appointment_time} has been cancelled. Reason: ${reasonDisplay}.${notesText}`,
+    'Appointment Cancelled'
+  )
+
+  this.logger.log(`Cancellation notifications sent for appointment ${appointment_id}`)
 }
 
 

@@ -1,4 +1,4 @@
-import { Inject, Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
+import { Inject, Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common'
 import { SupabaseClient } from '@supabase/supabase-js'
 import { SUPABASE } from '../supabase/supabase.module'
 import { CreateAppointmentDto } from './dto/create-appointment.dto'
@@ -15,6 +15,7 @@ import { ClientProxy } from '@nestjs/microservices'
 import { AppointmentMQDto } from './dto/appointmentMQ.dto'
 import { AppointmentCancellationDto } from './dto/appointment-cancellation.dto'
 import { AppointmentUpdateDto } from './dto/appointment-update.dto'
+import { CancelAppointmentDto, CancellationReason } from './dto/cancel-appointment.dto'
 
 type DbRow = {
   id: string
@@ -411,8 +412,7 @@ async update(id: string, dto: any): Promise<ApiRow> {
           year: 'numeric'
         })
         
-        this.logger(`Sending cancellation email to ${userData.email}`)
-        this.mailerClient.emit('appointment_cancelled', {
+        const cancellationPayload = {
           appointment_id: id,
           patient_id: data.patient_id,
           doctor_id: data.doctor_id,
@@ -424,7 +424,17 @@ async update(id: string, dto: any): Promise<ApiRow> {
           appointment_mode: data.mode,
           appointment_link: data.link || undefined,
           cancellation_date: cancellationDate,
-        } as AppointmentCancellationDto)
+          cancellation_reason: 'patient-request',
+          cancellation_notes: dto.notes || undefined,
+        }
+        
+        // Send cancellation email to patient
+        this.logger(`Sending cancellation email to ${userData.email}`)
+        this.mailerClient.emit('appointment_cancelled', cancellationPayload)
+        
+        // Send in-app notifications to both patient and doctor via scheduler
+        this.logger(`Sending cancellation notifications to scheduler`)
+        this.schedulerClient.emit('appointment_cancelled', cancellationPayload)
       } 
       // Send update email for other changes
       else if (dto.status !== 'cancelled') {
@@ -527,6 +537,192 @@ async update(id: string, dto: any): Promise<ApiRow> {
     }
     
     return { id, cancelled: true }
+  }
+
+
+  /**
+   * Cancel an appointment with reason and notes
+   * Used by nutritionist portal for detailed cancellation
+   */
+  async cancelAppointment(
+    id: string,
+    dto: CancelAppointmentDto,
+    nutritionistId: string
+  ): Promise<{
+    success: boolean
+    message: string
+    appointment: {
+      id: string
+      status: string
+      cancellationReason: string
+      cancellationNotes: string | null
+      cancelledAt: string
+      cancelledBy: string
+    }
+  }> {
+    this.logger(`CANCEL APPOINTMENT CALLED FOR ID=${id} BY NUTRITIONIST=${nutritionistId}`)
+
+    const VALID_REASONS: CancellationReason[] = [
+      CancellationReason.Emergency,
+      CancellationReason.Scheduling,
+      CancellationReason.PatientRequest,
+      CancellationReason.Unavailable,
+      CancellationReason.Other,
+    ]
+
+    // Validate reason
+    if (!dto.reason || !VALID_REASONS.includes(dto.reason)) {
+      throw new BadRequestException({
+        success: false,
+        error: 'INVALID_REASON',
+        message: 'A valid cancellation reason is required',
+      })
+    }
+
+    // Find appointment
+    const { data: appointment, error: fetchError } = await this.supabase
+      .from('appointments')
+      .select('*')
+      .eq('id', id)
+      .single()
+
+    if (fetchError?.message?.includes('No rows')) {
+      throw new NotFoundException({
+        success: false,
+        error: 'NOT_FOUND',
+        message: 'Appointment not found',
+      })
+    }
+    if (fetchError) throw new BadRequestException(fetchError.message)
+
+    // Check authorization - nutritionist must be assigned to this appointment
+    if (appointment.doctor_id !== nutritionistId) {
+      throw new ForbiddenException({
+        success: false,
+        error: 'FORBIDDEN',
+        message: 'You are not authorized to cancel this appointment',
+      })
+    }
+
+    // Check if appointment can be cancelled (only upcoming appointments)
+    if (appointment.status !== 'upcoming') {
+      throw new BadRequestException({
+        success: false,
+        error: 'INVALID_STATUS',
+        message: 'Cannot cancel an appointment that is already cancelled or completed',
+      })
+    }
+
+    const cancelledAt = new Date().toISOString()
+
+    // Combine reason and notes for storage
+    const combinedCancellationReason = dto.notes 
+      ? `${dto.reason}: ${dto.notes}` 
+      : dto.reason
+
+    // Update appointment with cancellation details
+    const { data: updatedAppointment, error: updateError } = await this.supabase
+      .from('appointments')
+      .update({
+        status: 'cancelled',
+        cancellation_reason: combinedCancellationReason,
+        cancelled_by: dto.cancelledBy,
+        updated_at: cancelledAt,
+      })
+      .eq('id', id)
+      .select()
+      .single()
+
+    if (updateError) throw new BadRequestException(updateError.message)
+
+    this.logger(`APPOINTMENT ${id} CANCELLED SUCCESSFULLY`)
+
+    // Send notifications (async - don't block response)
+    this.sendCancellationNotifications(
+      appointment,
+      dto,
+      nutritionistId,
+      cancelledAt
+    ).catch((err) => {
+      this.logger(`ERROR SENDING CANCELLATION NOTIFICATIONS: ${err.message}`)
+    })
+
+    return {
+      success: true,
+      message: 'Appointment cancelled successfully',
+      appointment: {
+        id: updatedAppointment.id,
+        status: updatedAppointment.status,
+        cancellationReason: updatedAppointment.cancellation_reason,
+        cancellationNotes: dto.notes || null,
+        cancelledAt: cancelledAt,
+        cancelledBy: dto.cancelledBy,
+      },
+    }
+  }
+
+  /**
+   * Helper method to send cancellation notifications
+   */
+  private async sendCancellationNotifications(
+    appointment: any,
+    dto: CancelAppointmentDto,
+    nutritionistId: string,
+    cancelledAt: string
+  ): Promise<void> {
+    try {
+      const patient = await this.profileModel.findOne({ id: appointment.patient_id }).lean()
+      const doctor = await this.nut.findOne({ id: nutritionistId }).lean()
+
+      // Fetch patient email from users table
+      const { data: userData, error: userError } = await this.supabase
+        .from('users')
+        .select('email')
+        .eq('id', appointment.patient_id)
+        .single()
+
+      if (patient && doctor && userData?.email) {
+        const cancellationDate = new Date(cancelledAt).toLocaleDateString('en-GB', {
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric',
+        })
+
+        const cancellationPayload = {
+          appointment_id: appointment.id,
+          patient_id: appointment.patient_id,
+          doctor_id: appointment.doctor_id,
+          patient_email: userData.email,
+          patient_name: patient.name || 'Patient',
+          doctor_name: doctor.name || 'Doctor',
+          appointment_date: appointment.date,
+          appointment_time: appointment.time,
+          appointment_mode: appointment.mode,
+          appointment_link: appointment.link || undefined,
+          cancellation_date: cancellationDate,
+          cancellation_reason: dto.reason,
+          cancellation_notes: dto.notes,
+        }
+
+        // Send cancellation email via mailer service
+        this.logger(`Sending cancellation email to ${userData.email}`)
+        this.mailerClient.emit('appointment_cancelled', cancellationPayload)
+
+        // Send in-app notifications to both patient and doctor via scheduler service
+        this.logger(`Sending cancellation notifications via scheduler service`)
+        this.schedulerClient.emit('appointment_cancelled', cancellationPayload)
+
+        this.logger(`Cancellation notifications sent for appointment ${appointment.id}`)
+      } else {
+        this.logger('COULD NOT SEND CANCELLATION NOTIFICATIONS - MISSING PATIENT/DOCTOR DATA OR EMAIL')
+        if (userError) {
+          this.logger('ERROR FETCHING USER EMAIL: ' + userError.message)
+        }
+      }
+    } catch (error) {
+      this.logger('ERROR IN sendCancellationNotifications: ' + error.message)
+      throw error
+    }
   }
 
 

@@ -6,6 +6,7 @@ import { UpdateAppointmentDto } from './dto/update-appointment.dto'
 import { CompleteNutritionistAppointmentDto } from './dto/complete-nutritionist-appointment.dto'
 import { AppointmentMode, AppointmentStatus, AppointmentTypes } from './appointment.enums'
 import { AvailableSlotsQueryDto } from './dto/available-slots.dto'
+import { CancelAppointmentDto } from './dto/cancel-appointment.dto'
 
 @Controller()
 export class AppointmentsController {
@@ -55,6 +56,14 @@ export class AppointmentsController {
     payload: { id: string; dto: CompleteNutritionistAppointmentDto; nutritionistId: string },
   ) {
     return this.svc.completeNutritionistAppointment(payload.id, payload.dto, payload.nutritionistId)
+  }
+
+  @MessagePattern({ cmd: 'cancel_appointment' })
+  cancelAppointment(
+    @Payload()
+    payload: { id: string; dto: CancelAppointmentDto; nutritionistId: string },
+  ) {
+    return this.svc.cancelAppointment(payload.id, payload.dto, payload.nutritionistId)
   }
 
 

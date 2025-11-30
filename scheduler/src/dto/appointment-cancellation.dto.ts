@@ -1,5 +1,25 @@
 import { IsString, IsOptional, IsEmail } from 'class-validator'
 
+export class AppointmentCancellationNotificationDto {
+  @IsString()
+  userId: string
+
+  @IsString()
+  type: string
+
+  @IsString()
+  title: string
+
+  @IsString()
+  message: string
+
+  @IsOptional()
+  data?: {
+    appointmentId: string
+    reason: string
+  }
+}
+
 export class AppointmentCancellationDto {
   @IsString()
   appointment_id: string
