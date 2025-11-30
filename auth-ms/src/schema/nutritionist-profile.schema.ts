@@ -46,8 +46,8 @@ export class NutritionistProfile {
   @Prop()
   consultationFee: number
 
-  @Prop([{ day: String, start: String, end: String }])
-  workingHours: { day: string; start: string; end: string }[]
+  @Prop([{ day: String, start: String, end: String, location: String }])
+  workingHours: { day: string; start: string; end: string; location: string }[]
 
   @Prop({ default: 0 })
   rating: number
