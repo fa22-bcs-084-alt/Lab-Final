@@ -1147,26 +1147,30 @@ async getAvailableSlots(providerId: string, role: string, date: string) {
     return { slots: [], message: `Provider does not work on ${dayOfWeek}` }
   }
 
-  this.logger(`Working hours: ${workingDay.start} - ${workingDay.end}`)
+  this.logger(`Working hours: ${workingDay.start} - ${workingDay.end}, Location: ${workingDay.location || 'Not specified'}`)
 
   // 4. Generate 1-hour slots between start and end
-  const slots: string[] = []
+  const slots: { time: string; location: string }[] = []
   const startHour = parseInt(workingDay.start.split(':')[0], 10)
   const endHour = parseInt(workingDay.end.split(':')[0], 10)
 
   for (let hour = startHour; hour < endHour; hour++) {
     const slot = `${hour.toString().padStart(2, '0')}:00:00`
     if (!bookedTimes.includes(slot)) {
-      slots.push(slot)
+      slots.push({
+        time: slot,
+        location: workingDay.location || 'Not specified'
+      })
     }
   }
 
-  this.logger(`Available slots: ${slots.join(', ') || 'none'}`)
+  this.logger(`Available slots: ${slots.map(s => s.time).join(', ') || 'none'}`)
 
   return {
     providerId,
     role,
     date,
+    location: workingDay.location || 'Not specified',
     availableSlots: slots,
   }
 }
