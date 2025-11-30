@@ -7,6 +7,27 @@ import { AppointmentDto } from 'src/dto/appointment.dto'
 import { LabBookingConfirmationDto } from 'src/dto/lab-booking-confirmation.dto'
 import { AppointmentCancellationDto } from 'src/dto/appointment-cancellation.dto'
 
+// Format date as "25 Nov 2025" format
+function formatDateForNotification(dateStr: string): string {
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  let date: Date
+  
+  // Handle different date formats
+  if (dateStr.includes('/')) {
+    // Format: DD/MM/YYYY
+    const [day, month, year] = dateStr.split('/')
+    date = new Date(`${year}-${month}-${day}`)
+  } else {
+    // Format: YYYY-MM-DD or ISO string
+    date = new Date(dateStr.split('T')[0])
+  }
+  
+  const day = date.getDate()
+  const month = months[date.getMonth()]
+  const year = date.getFullYear()
+  return `${day} ${month} ${year}`
+}
+
 // Map reason codes to display labels
 const REASON_LABELS: Record<string, string> = {
   'emergency': 'Personal Emergency',
@@ -62,12 +83,12 @@ async handleAppointmentReschedule(data: AppointmentDto) {
   const { patient_id, doctor_id, patient_name, doctor_name, appointment_date, appointment_time } = data
   await this.createNotification(
     patient_id,
-    `Your appointment with ${doctor_name} has been rescheduled to ${appointment_date.split('T')[0]} at ${appointment_time}`,
+    `Your appointment with ${doctor_name} has been rescheduled to ${formatDateForNotification(appointment_date)} at ${appointment_time}`,
     'Appointment Rescheduled'
   )
   await this.createNotification(
     doctor_id,
-    `Appointment with ${patient_name} has been rescheduled to ${appointment_date.split('T')[0]} at ${appointment_time}`,
+    `Appointment with ${patient_name} has been rescheduled to ${formatDateForNotification(appointment_date)} at ${appointment_time}`,
     'Appointment Rescheduled'
   )
 }
@@ -107,8 +128,8 @@ async handleAppointment(data:AppointmentDto) {
 
 
 
-  await this.createNotification(patient_id, `Your appointment with ${doctor_name} is booked for ${appointment_date.split('T')[0]} at ${appointment_time}`,'New Appointment Booked' )
-  await this.createNotification(doctor_id, `New appointment scheduled with ${patient_name} on ${appointment_date.split('T')[0]} at ${appointment_time}`,'New Appointment Booked' )
+  await this.createNotification(patient_id, `Your appointment with ${doctor_name} is booked for ${formatDateForNotification(appointment_date)} at ${appointment_time}`,'New Appointment Booked' )
+  await this.createNotification(doctor_id, `New appointment scheduled with ${patient_name} on ${formatDateForNotification(appointment_date)} at ${appointment_time}`,'New Appointment Booked' )
 }
 
 
@@ -126,12 +147,12 @@ async handleLabBookingReschedule(data: LabBookingConfirmationDto) {
   const { patient_id, technician_id, patient_name, scheduled_date, scheduled_time, test_name, location } = data
   await this.createNotification(
     patient_id,
-    `Your Lab test: ${test_name} has been rescheduled to ${scheduled_date} at ${scheduled_time}. Location: ${location}`,
+    `Your Lab test: ${test_name} has been rescheduled to ${formatDateForNotification(scheduled_date)} at ${scheduled_time}. Location: ${location}`,
     'Lab Test Rescheduled'
   )
   await this.createNotification(
     technician_id,
-    `Lab Test: ${test_name} with ${patient_name} has been rescheduled to ${scheduled_date} at ${scheduled_time}`,
+    `Lab Test: ${test_name} with ${patient_name} has been rescheduled to ${formatDateForNotification(scheduled_date)} at ${scheduled_time}`,
     'Lab Test Rescheduled'
   )
 }
@@ -174,8 +195,8 @@ console.log('lab DateTime (UTC):', appointmentDateTime.toISOString())
 
 
 
-  await this.createNotification(patient_id, `Your Lab test: ${test_name} booked for ${scheduled_date.split('T')[0]} at ${scheduled_time}  Location: ${location}`,'New Lab Test Booked' )
-  await this.createNotification(technician_id, `New Lab Test: ${test_name} scheduled with ${patient_name} on ${scheduled_date.split('T')[0]} at ${scheduled_time}`,'New Lab Test Booked' )
+  await this.createNotification(patient_id, `Your Lab test: ${test_name} booked for ${formatDateForNotification(scheduled_date)} at ${scheduled_time}  Location: ${location}`,'New Lab Test Booked' )
+  await this.createNotification(technician_id, `New Lab Test: ${test_name} scheduled with ${patient_name} on ${formatDateForNotification(scheduled_date)} at ${scheduled_time}`,'New Lab Test Booked' )
 }
 
 
@@ -205,14 +226,14 @@ async handleAppointmentCancellation(data: AppointmentCancellationDto) {
   // Send notification to patient
   await this.createNotification(
     patient_id,
-    `Your appointment with ${doctor_name} scheduled for ${appointment_date.split('T')[0]} at ${appointment_time} has been cancelled. Reason: ${reasonDisplay}.${notesText}`,
+    `Your appointment with ${doctor_name} scheduled for ${formatDateForNotification(appointment_date)} at ${appointment_time} has been cancelled. Reason: ${reasonDisplay}.${notesText}`,
     'Appointment Cancelled'
   )
 
   // Send notification to doctor/nutritionist
   await this.createNotification(
     doctor_id,
-    `Appointment with ${patient_name} scheduled for ${appointment_date.split('T')[0]} at ${appointment_time} has been cancelled. Reason: ${reasonDisplay}.${notesText}`,
+    `Appointment with ${patient_name} scheduled for ${formatDateForNotification(appointment_date)} at ${appointment_time} has been cancelled. Reason: ${reasonDisplay}.${notesText}`,
     'Appointment Cancelled'
   )
 
