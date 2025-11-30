@@ -997,9 +997,21 @@ async getAppointmentsForPatient(patientId: string) {
     appointments.map(async row => {
       const user = userMap.get(row.doctor_id)
       let doctorDetails: any = null
+      let appointmentLocation: string | undefined = undefined
+
       if (user?.role === 'nutritionist') {
         doctorDetails = await this.nut.findOne({ id: user.id }).lean()
-      }//else docotr thing
+        
+        // Get location for physical appointments based on the appointment day
+        if (row.mode === 'physical' && doctorDetails?.workingHours) {
+          const appointmentDate = new Date(row.date)
+          const dayOfWeek = appointmentDate.toLocaleString('en-US', { weekday: 'long' })
+          const workingDay = doctorDetails.workingHours.find(
+            (wh: any) => wh.day.toLowerCase() === dayOfWeek.toLowerCase()
+          )
+          appointmentLocation = workingDay?.location || 'Location not specified'
+        }
+      }//else doctor thing
 
       return {
         id: row.id,
@@ -1014,6 +1026,9 @@ async getAppointmentsForPatient(patientId: string) {
         notes: row.notes ?? undefined,
         report: row.report ?? undefined,
         mode: row.mode,
+        // Include location for physical appointments, link for online appointments
+        location: row.mode === 'physical' ? appointmentLocation : undefined,
+        link: row.mode !== 'physical' ? (row.link ?? undefined) : undefined,
         dataShared: row.data_shared,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
