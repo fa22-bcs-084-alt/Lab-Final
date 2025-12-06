@@ -71,7 +71,26 @@ export class AuthService {
     if (error) {
       console.error(`[INFO: AUTH SERVICE] Registration error for ${email}: ${error.message}`)
       if (error.code === '23505') {
-        throw new ConflictException('Email already exists')
+        // Email already exists - check if user is verified
+        const { data: existingUser } = await this.supabase.getClient()
+          .from('users')
+          .select('is_verified')
+          .eq('email', email)
+          .single()
+
+        if (existingUser && !existingUser.is_verified) {
+          // User exists but not verified - update password and resend OTP
+          console.log(`[INFO: AUTH SERVICE] User exists but not verified, resending OTP to ${email}`)
+          await this.supabase.getClient()
+            .from('users')
+            .update({ password_hash: hash, otp })
+            .eq('email', email)
+
+          await this.sendOtpEmail(email, otp, false)
+          return { message: 'Account not verified yet. New OTP sent to email', success: true }
+        }
+
+        throw new ConflictException('Email already exists and is verified')
       }
       throw new Error(error.message)
     }
