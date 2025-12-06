@@ -1,9 +1,9 @@
-import { Injectable, UnauthorizedException, ConflictException, BadRequestException } from '@nestjs/common'
+import { Injectable, UnauthorizedException, ConflictException, BadRequestException, Inject } from '@nestjs/common'
 import { SupabaseService } from '../supabase/supabase.service'
 import * as bcrypt from 'bcrypt'
 import { JwtService } from '@nestjs/jwt'
 import * as crypto from 'crypto'
-import { MailerService } from 'src/mailer-service/mailer-service.service'
+import { ClientProxy } from '@nestjs/microservices'
 import { ConfigService } from '@nestjs/config'
 import { v2 as cloudinary } from 'cloudinary'
 import { Readable } from 'stream'
@@ -18,7 +18,7 @@ export class AuthService {
   constructor(
     private supabase: SupabaseService,
     private jwt: JwtService,
-    private mailer: MailerService,
+    @Inject('MAILER_SERVICE') private readonly mailerClient: ClientProxy,
     private configService: ConfigService,
     @InjectModel(Profile.name) private profileModel: Model<ProfileDocument>,
     @InjectModel(NutritionistProfile.name) private nutModel:Model<NutritionistProfileDocument>,
@@ -31,9 +31,10 @@ export class AuthService {
     })
   }
 
-  private async sendOtpEmail(email: string, otp: string, subject: string, message: string) {
+  private async sendOtpEmail(email: string, otp: string, isPasswordReset: boolean = false) {
     console.log(`[INFO: AUTH SERVICE] Sending OTP email to ${email}`)
-    await this.mailer.sendMail(email, subject, `${message}\n\nYour OTP: ${otp}`)
+    const event = isPasswordReset ? 'send-password-reset-otp-email' : 'send-otp-verification-email'
+    this.mailerClient.emit(event, { email, otp })
   }
 
   async verifyResetOtp(email: string, otp: string) {
@@ -75,7 +76,7 @@ export class AuthService {
       throw new Error(error.message)
     }
 
-    await this.sendOtpEmail(email, otp, 'Verify your account', 'Welcome! Please verify your email using the OTP below.')
+    await this.sendOtpEmail(email, otp, false)
     return { message: 'Registered successfully, OTP sent to email', success: true }
   }
 
@@ -131,6 +132,9 @@ export class AuthService {
       .from('users')
       .update({ is_verified: true, otp: null })
       .eq('email', email)
+
+    // Send welcome email after successful verification
+    this.mailerClient.emit('send-welcome-email', { email })
 
     console.log(`[INFO: AUTH SERVICE] OTP verified successfully for ${email}`)
     return { success: true, message: 'Email verified successfully' }
@@ -199,7 +203,7 @@ export class AuthService {
       throw new Error(error.message)
     }
 
-    await this.sendOtpEmail(email, otp, 'Password Reset Request', 'Use the OTP below to reset your password.')
+    await this.sendOtpEmail(email, otp, true)
     return { message: 'Password reset OTP sent to email', success: true }
   }
 

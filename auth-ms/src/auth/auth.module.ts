@@ -12,6 +12,7 @@ import { MongooseModule } from '@nestjs/mongoose'
 import { Profile,ProfileSchema } from 'src/schema/patient.profile.schema'
 import { NutritionistProfile, NutritionistProfileSchema } from 'src/schema/nutritionist-profile.schema'
 import { FitbitModule } from '../fitbit/fitbit.module'
+import { ClientsModule, Transport } from '@nestjs/microservices'
 
 
 @Module({
@@ -20,6 +21,17 @@ import { FitbitModule } from '../fitbit/fitbit.module'
     PassportModule,
     FitbitModule,
     MongooseModule.forFeature([{ name: Profile.name, schema: ProfileSchema },{ name: NutritionistProfile.name, schema: NutritionistProfileSchema }]),
+    ClientsModule.register([
+      {
+        name: 'MAILER_SERVICE',
+        transport: Transport.RMQ,
+        options: {
+          urls: ['amqp://guest:guest@localhost:5672'],
+          queue: 'email_queue',
+          queueOptions: { durable: true },
+        },
+      },
+    ]),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

@@ -7,6 +7,7 @@ import { MailModule } from './mail/mail.module';
 import { LabsModule } from './labs/labs.module';
 import { NewsletterModule } from './newsletter/newsletter.module';
 import { CvModule } from './cv/cv.module';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
   imports: [  ConfigModule.forRoot({ isGlobal: true }),
@@ -14,7 +15,8 @@ import { CvModule } from './cv/cv.module';
     MailModule,
     LabsModule,
     NewsletterModule,
-    CvModule],
+    CvModule,
+    AuthModule],
   controllers: [AppController],
   providers: [AppService],
 })
