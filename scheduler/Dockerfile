@@ -8,6 +8,9 @@ RUN apk add --no-cache git python3 make g++
 COPY package*.json ./
 RUN npm ci --legacy-peer-deps
 
+# Ensure @nestjs/cli is available
+RUN npm list @nestjs/cli || npm install @nestjs/cli --legacy-peer-deps
+
 COPY tsconfig*.json ./
 COPY src ./src
 

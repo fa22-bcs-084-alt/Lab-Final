@@ -11,7 +11,7 @@ import { ClientsModule } from '@nestjs/microservices/module/clients.module';
              name: 'MAILER_SERVICE',
              transport: Transport.RMQ,
              options: {
-               urls: ['amqp://guest:guest@localhost:5672'],
+               urls: [`amqp://guest:guest@${process.env.RABBITMQ_HOST || 'localhost'}:5672`],
                queue: 'email_queue',
                queueOptions: { durable: true },
              },

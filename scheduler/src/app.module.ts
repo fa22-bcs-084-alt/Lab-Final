@@ -20,7 +20,7 @@ import { FitbitModule } from './fitbit/fitbit.module';
      ReminderModule,
       BullModule.forRoot({
       connection: {
-        host: 'localhost', 
+        host: process.env.REDIS_HOST || 'localhost', 
         port: 6379,
       },
     }),

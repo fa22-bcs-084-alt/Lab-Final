@@ -10,7 +10,7 @@ import { ClientsModule, Transport } from '@nestjs/microservices';
           name: 'FITNESS_SERVICE',
           transport: Transport.TCP,
           options: {
-          
+            host: process.env.FITNESS_HOST || 'localhost',
             port: 4005,
           },
         },

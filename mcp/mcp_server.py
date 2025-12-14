@@ -1,4 +1,5 @@
 import logging
+import os
 import requests
 import json
 from mcp.server.fastmcp import FastMCP
@@ -6,7 +7,7 @@ from mcp.server.fastmcp import FastMCP
 mcp = FastMCP("Hygieia MCP Server")
 
 # API Gateway base URL
-API_GATEWAY_BASE_URL = "http://localhost:4000"
+API_GATEWAY_BASE_URL = os.getenv('API_GATEWAY_URL', 'http://localhost:4000')
 
 logging.basicConfig(
     level=logging.INFO,

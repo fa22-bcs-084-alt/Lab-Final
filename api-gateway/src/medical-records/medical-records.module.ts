@@ -10,7 +10,7 @@ import { ClientsModule, Transport } from '@nestjs/microservices';
         name: 'MEDICAL_RECORDS_SERVICE',
         transport: Transport.TCP,
         options: {
-        
+          host: process.env.LAB_HOST || 'localhost',
           port: 4003,
         },
       },

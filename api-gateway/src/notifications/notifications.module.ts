@@ -10,7 +10,7 @@ import { Transport } from '@nestjs/microservices/enums/transport.enum';
             name: 'AUTH_SERVICE',
             transport: Transport.TCP,
             options: {
-            
+              host: process.env.AUTH_MS_HOST || 'localhost',
               port: 4002,
             },
           },
